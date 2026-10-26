@@ -1,20 +1,49 @@
-// Formatação pt-BR (apenas apresentação).
+// Formatadores pt-BR. Sem dependências: usados pela interface e pelos testes.
 
-export const fmtInt = (n: number) => Math.round(n).toLocaleString("pt-BR");
+const nf0 = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
+const cache = new Map<number, Intl.NumberFormat>();
 
-export const fmtPct = (x: number, d = 1) => `${(x * 100).toFixed(d).replace(".", ",")}%`;
+function nf(d: number): Intl.NumberFormat {
+  let f = cache.get(d);
+  if (!f) {
+    f = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+    cache.set(d, f);
+  }
+  return f;
+}
 
-export const fmtSignedPct = (x: number, d = 1) => `${x >= 0 ? "+" : "−"}${fmtPct(Math.abs(x), d)}`;
+export const int = (n: number): string => nf0.format(n);
+export const dec = (n: number, d = 1): string => nf(d).format(n);
+export const pct = (n: number, d = 1): string => `${nf(d).format(n)}%`;
+export const brl = (n: number): string => `R$ ${nf0.format(n)}`;
 
-export const fmtPP = (x: number, d = 1) =>
-  `${x >= 0 ? "+" : "−"}${(Math.abs(x) * 100).toFixed(d).replace(".", ",")} p.p.`;
+/** R$ 70,3 mi · R$ 899 mil · R$ 120 */
+export function brlCompact(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e6) return `R$ ${dec(n / 1e6, 1)} mi`;
+  if (a >= 1e3) return `R$ ${dec(n / 1e3, a >= 1e5 ? 0 : 1)} mil`;
+  return brl(n);
+}
 
-export const fmtSignedInt = (n: number) => `${n >= 0 ? "+" : "−"}${fmtInt(Math.abs(n))}`;
+/** +1,2 p.p. / −0,4 p.p. */
+export function pp(n: number, d = 1): string {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `${sign}${nf(d).format(Math.abs(n))} p.p.`;
+}
 
-export const fmtBRL = (x: number, d = 2) =>
-  x.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: d, maximumFractionDigits: d });
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
-export const fmtBRLCompact = (x: number) =>
-  x.toLocaleString("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1 });
+/** "2025-10" -> "out/25" */
+export function mesLabel(m: string): string {
+  const [y, mo] = m.split("-");
+  return `${MESES[Number(mo) - 1]}/${String(y).slice(2)}`;
+}
 
-export const fmtCompact = (x: number) => x.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
+/** "2025-11-24" -> "24/11" */
+export function diaLabel(d: string): string {
+  const [, mo, da] = d.split("-");
+  return `${da}/${mo}`;
+}
+
+/** Primeira letra maiúscula. */
+export const cap = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);

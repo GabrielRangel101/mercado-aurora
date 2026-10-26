@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# conferência do gerador de dados
+_validacao.json
+__pycache__/

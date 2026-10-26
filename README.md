@@ -1,35 +1,50 @@
-# Meridiano Subscriber Compass
+# Mercado Aurora · Radar de margem e ruptura
 
-Dashboard de **inteligência de assinaturas digitais (B2C)** da *Gazeta Meridiano*, um jornal **fictício**. Todos os dados são **100% sintéticos**, gerados no navegador por uma simulação determinística (seed fixa), sem nenhuma informação real de assinantes (LGPD).
+Dashboard de uma **rede fictícia de 4 supermercados**: onde a margem é ganha e perdida, quais produtos faltam na gôndola, quanto se joga fora e o que um alerta automático avisaria ao gerente. Todos os dados são **100% sintéticos** (nenhuma empresa ou cliente real), gerados em Python com seed fixa.
 
-Projeto de portfólio de **Gabriel Rangel**: dashboard web com motor de métricas próprio, motor de insights por regras, simulador "e se" e uma mesa de análise que responde perguntas de negócio sobre o painel.
-
-**Demo:** https://meridiano-subscriber-compass.lovable.app
+Projeto de portfólio de **Gabriel Rangel**.
 
 ## O que responde
-- **Aquisição:** funil de ponta a ponta (visitantes → início da compra → revisão → cartão → compra) por canal, com o maior vazamento e quantas assinaturas seriam recuperadas; CAC, LTV de 12 meses, LTV/CAC e payback por canal.
-- **Receita:** ponte de MRR (novas, fim de promoção, reajuste, upgrades, cancelamentos) e mix de planos (base × receita).
-- **Retenção:** churn por natureza e motivo, curva de permanência por safra (Kaplan-Meier, trata censura à direita) e risco de cancelamento por assinante.
-- **Simulador:** três alavancas (churn voluntário, recuperação de falha de pagamento, aquisição) sobre a mesma projeção do dashboard, com o que bastaria sozinho para bater a meta.
-- **Notas por mês** nos gráficos, **Pauta do dia** (achados priorizados) e **busca Ctrl/⌘+K**.
 
-## Mesa de análise (Modo IA)
-Clique num card e o painel gera leituras ligadas a ele, com sugestões de próxima pergunta. É um roteador de intenções sobre um motor determinístico: **a IA nunca calcula números**, só escolhe, ordena e redige. Responde perguntas como "qual o CAC por canal?", "vale a pena mídia paga?", "onde perco mais no funil?", "e se o churn cair 1 ponto?" e "baixar o preço melhora o churn?" (limite do efeito e custo, sem fingir causalidade).
+| Tela | Pergunta |
+|---|---|
+| **Visão geral** | Quanto a rede ganha de fato? Margem bruta × margem real, ponte da margem, leituras automáticas e um simulador do que vale agir. |
+| **Margem** | Quais SKUs sustentam a receita (curva ABC) e quais deixam pouca margem (itens de tráfego)? Margem real por categoria e loja. |
+| **Ruptura** | Quais itens faltam, quando e quanto isso custa? Pareto de venda perdida, ruptura por semana (com Black Friday, Natal e Páscoa) e por dia da semana. |
+| **Perdas** | Onde se joga fora, por quê e em qual loja? Perda por categoria, loja, mês e motivo; giro e cobertura de estoque. |
+| **Lojas e caixas** | Como as lojas se comparam? Receita por dia da semana, ticket ao longo do mês e dimensionamento de caixas por hora. |
+| **Cesta** | O que sai junto? Pares por suporte, confiança e lift, e missões de compra. |
+| **Alertas** | O que a automação avisaria? Regras, fila do dia e mensagem de WhatsApp ao gerente (especificação; automação ainda não conectada). |
+
+## Como os dados são feitos
+
+`scripts/gerar_dados.py` não sorteia números em cima de uma tabela pronta: **simula o estoque de cada SKU em cada loja, dia a dia** (demanda → venda limitada pelo estoque → quebra → pedido com ponto de reposição e lead time). Ruptura e perda nascem dessa simulação. Por cima entram sazonalidade (fim de semana, virada do mês, Black Friday, Natal, Páscoa, Copa), fornecedor irregular em parte dos itens de maior giro e uma loja que compra demais.
+
+```bash
+pip install -r scripts/requirements.txt
+python scripts/gerar_dados.py          # regrava src/data/*.json (5 s, seed fixa)
+```
 
 ## Arquitetura
-- `src/engine/`: funções puras sobre o dataset (geração, métricas, funil, unit economics, what-if, notas, insights, roteadores de perguntas).
-- `src/components/`: dashboard, simulador, painel de IA e barra de comandos.
-- Testes (vitest) cobrindo o motor, os roteadores de perguntas e as legendas.
+
+- `src/data/`: JSONs já agregados (~950 KB). As duas séries grandes carregam sob demanda.
+- `src/lib/insights.ts`: cálculos e leituras automáticas, funções puras. Todo número em texto é calculado dos dados, não digitado.
+- `src/components/views/`: uma tela por arquivo; `src/components/aurora/kit.tsx`: painéis, KPIs, mapa de calor e barras.
+- `src/test/insights.test.ts`: confere a coerência dos dados (margem real = bruta − perda, lojas e meses somam a rede, curva ABC fecha em 100%) e as leituras.
+- Stack: TanStack Start, React 19, Tailwind v4, Recharts. Sem banco: o front lê JSON estático.
 
 ## Limites assumidos
-CAC e taxas de visitante, revisão e cartão são premissas sintéticas por canal. Não há teste de preço nos dados, então a elasticidade não é medida.
+
+- A taxa de ruptura (≈3%) vem da política de reposição simulada. Em operação real tende a ser maior, porque boa parte da ruptura é de execução (produto no depósito, fora da gôndola), e isso não está modelado.
+- Venda perdida assume que 25% dos clientes levam outro item.
+- Os motivos de perda são uma apropriação por regra sobre a perda simulada; em dado real viriam do registro de quebra.
+- Os lifts da cesta são altos por construção (cestas geradas por missões de compra).
+- Sem centro de distribuição, sem promoções, 280 SKUs.
 
 ## Rodar localmente
+
 ```bash
 bun install   # ou npm install
 bun dev       # ou npm run dev
-bun run test  # vitest
+bun run test
 ```
-
-## Stack
-TanStack Start + React + Vite, Tailwind + shadcn/ui, Recharts, framer-motion.
