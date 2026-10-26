@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LabelList, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
 import { useAi } from "@/components/ai/ai-store";
 import { AskButton, ChartBox, ChartTip, COR, EIXO, Kpi, KpiStrip, Panel, type Delta } from "@/components/aurora/kit";
 import { DADOS, INSIGHTS } from "@/lib/aurora-data";
@@ -49,9 +49,9 @@ export function GeralView() {
 
   const mensal = km.map((m) => ({ mes: m.mes, receita: m.receita / 1e6, margemReal: m.margem_real_pct }));
   const ponte = [
-    { nome: "Margem bruta", base: 0, valor: r.margem_bruta_pct, cor: COR.azul },
-    { nome: "Perdas", base: r.margem_real_pct, valor: r.margem_bruta_pct - r.margem_real_pct, cor: COR.perigo },
-    { nome: "Margem real", base: 0, valor: r.margem_real_pct, cor: COR.verde },
+    { nome: "Margem bruta", base: 0, valor: r.margem_bruta_pct, cor: COR.azul, rotulo: pct(r.margem_bruta_pct) },
+    { nome: "Perdas", base: r.margem_real_pct, valor: r.margem_bruta_pct - r.margem_real_pct, cor: COR.perigo, rotulo: pp(r.margem_real_pct - r.margem_bruta_pct) },
+    { nome: "Margem real", base: 0, valor: r.margem_real_pct, cor: COR.verde, rotulo: pct(r.margem_real_pct) },
   ];
   const cats = [...categorias].sort((a2, b) => b.receita - a2.receita).map((c) => ({ categoria: c.categoria, bruta: c.margem_bruta_pct, real: c.margem_real_pct }));
 
@@ -97,10 +97,11 @@ export function GeralView() {
                 <XAxis dataKey="nome" tick={EIXO} tickLine={false} axisLine={false} />
                 <YAxis domain={[0, 30]} tick={EIXO} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v}%`} />
                 <Bar dataKey="base" stackId="p" fill="transparent" isAnimationActive={false} />
-                <Bar dataKey="valor" stackId="p" radius={[4, 4, 0, 0]} isAnimationActive={false} label={{ position: "top", fontSize: 12, fontWeight: 600, fill: "var(--foreground)", formatter: (v: number) => `${dec(v, 1)}%` }}>
+                <Bar dataKey="valor" stackId="p" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                   {ponte.map((p) => (
                     <Cell key={p.nome} fill={p.cor} />
                   ))}
+                  <LabelList dataKey="rotulo" position="top" style={{ fontSize: 12, fontWeight: 600, fill: "var(--foreground)" }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
