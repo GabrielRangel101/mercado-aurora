@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
-import { ChartBox, ChartTip, COR, EIXO, HeatGrid, Nota, Panel, Segmented, useLazy, type HeatCell } from "@/components/aurora/kit";
+import { ChartBox, ChartTip, COR, EIXO, HeatGrid, Kpi, Panel, Segmented, useLazy, type HeatCell, KpiStrip } from "@/components/aurora/kit";
 import { DADOS, LOJAS_CURTAS, loadVendasDiarias } from "@/lib/aurora-data";
 import { brl, brlCompact, dec, int, pct } from "@/lib/format";
 
@@ -16,6 +16,9 @@ const FAIXAS = [
 export function LojasView() {
   const { lojas, horario } = DADOS;
   const diario = useLazy(loadVendasDiarias);
+  const maiorReceita = [...lojas].sort((a, b) => b.receita - a.receita)[0];
+  const melhorMargem = [...lojas].sort((a, b) => b.margem_real_pct - a.margem_real_pct)[0];
+  const maiorPerda = [...lojas].sort((a, b) => b.perda_pct_receita - a.perda_pct_receita)[0];
   const [lojaSel, setLojaSel] = useState("3");
 
   const melhor = (f: (l: (typeof lojas)[number]) => number, maior = true) => {
@@ -69,7 +72,14 @@ export function LojasView() {
 
   return (
     <div className="space-y-4">
-      <Panel title="Comparativo entre lojas" summary="12 meses" info="Verde: melhor da rede no indicador. Vermelho: pior.">
+      <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
+        <Kpi label="Maior receita" valor={maiorReceita.nome.replace("Aurora ", "")} sub={brlCompact(maiorReceita.receita)} ask="Receita por loja" />
+        <Kpi label="Melhor margem real" valor={melhorMargem.nome.replace("Aurora ", "")} sub={pct(melhorMargem.margem_real_pct)} tom="bom" ask="Margem real por loja" />
+        <Kpi label="Maior perda" valor={maiorPerda.nome.replace("Aurora ", "")} sub={`${pct(maiorPerda.perda_pct_receita, 2)} da receita`} tom="ruim" destaque ask={`Por que a perda do ${maiorPerda.nome.replace("Aurora ", "")} é alta?`} />
+        <Kpi label="Faixas sem caixa suficiente" valor={String(horario.filter((h) => h.gap >= 1).length)} sub="loja × dia × hora com falta" tom="ruim" ask="Onde falta caixa?" />
+      </KpiStrip>
+
+      <Panel ask="Compare Centro e Jardins" title="Comparativo entre lojas" summary="12 meses" info="Verde: melhor da rede no indicador. Vermelho: pior.">
         <div className="overflow-x-auto scrollbar-thin">
           <table className="w-full text-xs tabular-nums">
             <thead>
@@ -102,9 +112,9 @@ export function LojasView() {
         </div>
       </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Receita média por dia da semana" summary="rede, R$ mil por dia">
-          <ChartBox height={240}>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel ask="Qual dia da semana vende mais?" title="Receita média por dia da semana" summary="rede, R$ mil por dia">
+          <ChartBox height={300}>
             {porDow.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={porDow} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
@@ -125,8 +135,8 @@ export function LojasView() {
           </ChartBox>
         </Panel>
 
-        <Panel title="Ticket médio ao longo do mês" summary="R$ por cupom, rede" info="O ticket sobe no início e no fim do mês (pagamento e compra grande) e cai no meio.">
-          <ChartBox height={240}>
+        <Panel ask="Ticket médio por loja" title="Ticket médio ao longo do mês" summary="R$ por cupom, rede" info="O ticket sobe no início e no fim do mês (pagamento e compra grande) e cai no meio.">
+          <ChartBox height={300}>
             {porFaixa.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={porFaixa} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
@@ -145,13 +155,13 @@ export function LojasView() {
       </div>
 
       <Panel
+        ask="Onde falta caixa?"
         title="Caixas por hora"
         summary={faltas ? `${lojaNome}: ${faltas} faixas com falta` : `${lojaNome}: sem falta`}
         actions={<Segmented label="Loja" value={lojaSel} onChange={setLojaSel} options={lojas.map((l, i) => ({ value: String(l.loja_id), label: LOJAS_CURTAS[i] }))} />}
-        info="Cupons por hora × capacidade de um caixa (18 cupons/h a 85% de uso). Número em cada célula: caixas escalados. −1 ou −2: faltam caixas naquela hora."
+        info="Cupons por hora × capacidade de um caixa (18 cupons/h a 85% de uso). Número em cada célula: caixas escalados. −1 ou −2: faltam caixas naquela hora. A escala atual é fixa por dia da semana, então não acompanha o pico de fim de semana entre 10h e 13h."
       >
         <HeatGrid corner="Hora" cols={DIAS} rows={linhasCaixa} colWidth="3.5rem" />
-        <Nota>A escala atual é fixa por dia da semana, então não acompanha o pico de fim de semana entre 10h e 13h.</Nota>
       </Panel>
     </div>
   );

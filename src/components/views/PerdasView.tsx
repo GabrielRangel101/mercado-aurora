@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
-import { BarList, ChartBox, ChartTip, COR, EIXO, HeatGrid, Kpi, Nota, Panel, Tag, type HeatCell } from "@/components/aurora/kit";
+import { BarList, ChartBox, ChartTip, COR, EIXO, HeatGrid, Kpi, Panel, Tag, type HeatCell, KpiStrip } from "@/components/aurora/kit";
 import { DADOS, LOJAS_CURTAS } from "@/lib/aurora-data";
 import { brlCompact, dec, mesLabel, pct } from "@/lib/format";
 import { media } from "@/lib/insights";
@@ -50,15 +50,15 @@ export function PerdasView() {
 
   return (
     <div className="space-y-4">
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
         <Kpi label="Perda total" valor={brlCompact(r.perda_custo)} tom="ruim" sub={`${pct(r.perda_pct_receita, 2)} da receita, a custo`} destaque />
         <Kpi label="Peso dos perecíveis" valor={pct(partePerecivel, 0)} sub="da perda vem de FLV, padaria, frios e açougue" />
         <Kpi label="Maior categoria" valor={ordenadas[0].categoria} sub={`${pct(ordenadas[0].perda_pct_receita)} da receita da categoria`} tom="ruim" />
         <Kpi label="Margem perdida" valor={`${dec(r.margem_bruta_pct - r.margem_real_pct, 1)} p.p.`} sub={`${pct(r.margem_bruta_pct)} bruta → ${pct(r.margem_real_pct)} real`} />
-      </section>
+      </KpiStrip>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Perda por categoria" summary="% da receita da categoria" info="Perda a custo ÷ receita da categoria. Barras laranja: categorias perecíveis.">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel ask="Perda por categoria" title="Perda por categoria" summary="% da receita da categoria" info="Perda a custo ÷ receita da categoria. Barras laranja: categorias perecíveis.">
           <BarList
             items={ordenadas.map((c) => ({
               label: c.categoria,
@@ -70,14 +70,14 @@ export function PerdasView() {
           />
         </Panel>
 
-        <Panel title="Perda por categoria e loja" summary="% da receita" info="Cor relativa à média da linha: vermelho é pior que as outras lojas na mesma categoria.">
+        <Panel ask="Por que a perda do Jardins é alta?" title="Perda por categoria e loja" summary="% da receita" info="Cor relativa à média da linha: vermelho é pior que as outras lojas na mesma categoria.">
           <HeatGrid corner="Categoria" cols={LOJAS_CURTAS} rows={linhas} />
         </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Evolução mensal da perda" summary="4 maiores categorias, % da receita">
-          <ChartBox height={270}>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel ask="Como evoluiu a perda por mês?" title="Evolução mensal da perda" summary="4 maiores categorias, % da receita">
+          <ChartBox height={320}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={evolucao} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
                 <CartesianGrid stroke={COR.grade} vertical={false} />
@@ -93,8 +93,8 @@ export function PerdasView() {
           </ChartBox>
         </Panel>
 
-        <Panel title="Motivos da perda" summary="R$ a custo, 8 maiores categorias">
-          <ChartBox height={270}>
+        <Panel ask="Perda por motivo" title="Motivos da perda" summary="R$ a custo, 8 maiores categorias" info="Os motivos são uma apropriação por regra sobre a perda simulada (vencimento domina nos perecíveis; furto e avaria nos demais). Em dado real, viria do registro de quebra por motivo.">
+          <ChartBox height={320}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={motivos} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }} barCategoryGap={6}>
                 <CartesianGrid stroke={COR.grade} horizontal={false} />
@@ -108,13 +108,10 @@ export function PerdasView() {
               </BarChart>
             </ResponsiveContainer>
           </ChartBox>
-          <Nota>
-            Os motivos são uma apropriação por regra sobre a perda simulada (vencimento domina nos perecíveis; furto e avaria nos demais). Em dado real, viria do registro de quebra por motivo.
-          </Nota>
         </Panel>
       </div>
 
-      <Panel title="Giro e cobertura de estoque" summary="por categoria">
+      <Panel ask="Giro por categoria" title="Giro e cobertura de estoque" summary="por categoria">
         <div className="overflow-x-auto scrollbar-thin">
           <table className="w-full text-xs tabular-nums">
             <thead>

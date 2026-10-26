@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Info } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Info, Sparkles } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer } from "recharts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAi } from "@/components/ai/ai-store";
 import { cn } from "@/lib/utils";
 
 /** Cores das séries (variáveis CSS do tema). */
@@ -68,11 +69,27 @@ export function InfoTip({ text }: { text: ReactNode }) {
   );
 }
 
+/** Botão ✦ que abre o Modo IA já com uma pergunta sobre o gráfico. */
+export function AskButton({ pergunta, className }: { pergunta: string; className?: string }) {
+  const ai = useAi();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" onClick={() => ai.perguntar(pergunta)} aria-label={`Perguntar ao Modo IA: ${pergunta}`} className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-md text-brand/80 transition-colors hover:bg-brand/12 hover:text-brand", className)}>
+          <Sparkles className="size-3.5" aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64 text-xs">{pergunta}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function Panel({
   title,
   info,
   summary,
   actions,
+  ask,
   className,
   children,
 }: {
@@ -80,20 +97,23 @@ export function Panel({
   info?: ReactNode;
   summary?: ReactNode;
   actions?: ReactNode;
+  /** pergunta sugerida ao Modo IA para este painel */
+  ask?: string;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={cn("dash-card flex min-w-0 flex-col gap-3 p-4", className)}>
-      <header className="flex min-h-6 flex-wrap items-center gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</h2>
+    <section className={cn("dash-card flex min-w-0 flex-col gap-3 p-4 2xl:p-5", className)}>
+      <header className="flex min-h-7 flex-wrap items-center gap-2">
+        <h2 className="font-display text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
         {info && <InfoTip text={info} />}
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {summary && <span className="min-w-0 truncate text-xs tabular-nums text-muted-foreground">{summary}</span>}
           {actions}
+          {ask && <AskButton pergunta={ask} />}
         </div>
       </header>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
     </section>
   );
 }
@@ -117,6 +137,18 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
   );
 }
 
+export interface Delta {
+  texto: string;
+  /** true = mudança favorável */
+  bom: boolean;
+  sobe: boolean;
+}
+
+/** Faixa única de indicadores: um cartão, células separadas por linha fina. */
+export function KpiStrip({ children, className }: { children: ReactNode; className?: string }) {
+  return <section className={cn("dash-card grid grid-cols-2 gap-px overflow-hidden bg-border p-0 md:grid-cols-3 xl:grid-cols-6", className)}>{children}</section>;
+}
+
 export function Kpi({
   label,
   valor,
@@ -125,6 +157,8 @@ export function Kpi({
   info,
   spark,
   destaque,
+  delta,
+  ask,
 }: {
   label: string;
   valor: string;
@@ -133,21 +167,32 @@ export function Kpi({
   info?: ReactNode;
   spark?: number[];
   destaque?: boolean;
+  delta?: Delta;
+  ask?: string;
 }) {
   const dados = spark?.map((v, i) => ({ i, v }));
   const cor = tom === "ruim" ? COR.perigo : tom === "bom" ? COR.positivo : COR.verde;
   return (
-    <article className={cn("dash-card flex min-w-0 flex-col gap-1 p-3", destaque && "border-primary/50 bg-primary/5")}>
+    <article className={cn("group relative flex min-w-0 flex-col gap-1.5 bg-card p-4 2xl:p-5", destaque && "bg-primary text-primary-foreground")}>
       <div className="flex items-center gap-1">
-        <h3 className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</h3>
-        {info && <InfoTip text={info} />}
+        <h3 className={cn("truncate text-[12px] font-medium", destaque ? "text-primary-foreground/75" : "text-muted-foreground")}>{label}</h3>
+        {info && !destaque && <InfoTip text={info} />}
+        {ask && <AskButton pergunta={ask} className={cn("ml-auto opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100", destaque && "text-primary-foreground hover:bg-white/15 hover:text-primary-foreground")} />}
       </div>
-      <p className="truncate font-display text-[28px] font-semibold leading-none tracking-tight text-foreground">{valor}</p>
+      <p className="truncate font-display text-[30px] font-semibold leading-none tracking-tight 2xl:text-[34px]">{valor}</p>
       <div className="flex min-h-9 items-end justify-between gap-2">
-        <p className="min-w-0 text-[11px] leading-snug text-muted-foreground">{sub}</p>
+        <div className="min-w-0 space-y-1">
+          {delta && (
+            <p className={cn("inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", destaque ? "bg-white/15 text-primary-foreground" : delta.bom ? "bg-positive/12 text-positive" : "bg-danger/12 text-danger")}>
+              {delta.sobe ? <ArrowUpRight className="size-3" aria-hidden /> : <ArrowDownRight className="size-3" aria-hidden />}
+              {delta.texto}
+            </p>
+          )}
+          {sub && <p className={cn("text-[11px] leading-snug", destaque ? "text-primary-foreground/70" : "text-muted-foreground")}>{sub}</p>}
+        </div>
         {dados && (
-          <div className="h-8 w-16 shrink-0" aria-hidden>
-            <MiniLine dados={dados} cor={cor} />
+          <div className="h-9 w-20 shrink-0" aria-hidden>
+            <MiniLine dados={dados} cor={destaque ? "hsl(26 95% 62%)" : cor} />
           </div>
         )}
       </div>

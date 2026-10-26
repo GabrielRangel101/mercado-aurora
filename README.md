@@ -4,6 +4,15 @@ Dashboard de uma **rede fictícia de 4 supermercados**: onde a margem é ganha e
 
 Projeto de portfólio de **Gabriel Rangel**.
 
+## Modo IA
+
+Gaveta lateral (atalho Ctrl+K, botão ✦ em cada gráfico) que responde perguntas em português sobre **todos** os dados do painel: receita, margem bruta e real, perdas (por motivo também), ruptura e venda perdida, ticket, cupons, giro, cobertura, curva ABC, cestas, caixas e alertas, cruzando loja, categoria, mês, dia da semana, classe, marca e produto, além de Black Friday, Natal e Páscoa.
+
+- `src/lib/ask.ts`: motor determinístico. Interpreta a pergunta (`interpretar`), escolhe a tabela que cobre o recorte, calcula e redige (`executar`). Número nenhum é gerado por modelo de linguagem.
+- `Consulta` é um JSON estruturado. Para ligar um LLM (Claude via Edge Function), basta trocar `interpretar()` por uma chamada que devolva esse JSON; `executar()` continua calculando.
+- Quando o recorte pedido não existe nos dados (por exemplo, perda por motivo em uma loja), a resposta avisa e mostra o que existe, marcada como "recorte parcial".
+- Testes: `src/test/ask.test.ts`.
+
 ## O que responde
 
 | Tela | Pergunta |

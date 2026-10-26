@@ -117,6 +117,15 @@
   --cat-5: hsl(44 88% 42%);
   --cat-6: hsl(215 14% 50%);
 
+  /* barra lateral e Modo IA: verde-floresta escuro */
+  --side-bg: hsl(165 36% 9%);
+  --side-fg: hsl(40 25% 82%);
+  --side-muted: hsl(165 12% 58%);
+  --ai-bg: hsl(165 34% 10%);
+  --ai-fg: hsl(40 30% 94%);
+  --ai-muted: hsl(165 14% 62%);
+  --ai-card: hsl(165 26% 15%);
+
   --shadow-glass: inset 0 1px 0 hsl(0 0% 100% / 0.7), 0 6px 18px -12px hsl(165 40% 12% / 0.35);
 }
 
@@ -144,9 +153,7 @@
   background: var(--card-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-glass);
-  transition: border-color 150ms ease;
-  &:hover { border-color: var(--border-strong); }
+  box-shadow: 0 1px 2px hsl(165 40% 12% / 0.05), 0 8px 24px -16px hsl(165 40% 12% / 0.28);
 }
 
 @utility font-display {

@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { HeatGrid, Kpi, Nota, Panel, Segmented, Tag, type HeatCell } from "@/components/aurora/kit";
+import { HeatGrid, Kpi, Panel, Segmented, Tag, type HeatCell, KpiStrip } from "@/components/aurora/kit";
 import { DADOS, LOJAS_CURTAS } from "@/lib/aurora-data";
 import { brlCompact, dec, int } from "@/lib/format";
 import type { EventoAlerta } from "@/lib/types";
@@ -48,14 +48,14 @@ export function AlertasView() {
         </p>
       </div>
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Regras de alerta">
+      <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
         {alertas.regras.map((r) => (
           <Kpi key={r.id} label={`${r.id} · ${r.nome}`} valor={int(totalPor(r.id))} sub={`${r.horario} · para ${r.destino}`} tom={r.id === "R1" ? "ruim" : "neutro"} info={`${r.condicao}. Ação: ${r.acao}.`} />
         ))}
-      </section>
+      </KpiStrip>
 
-      <div className="grid gap-4 lg:grid-cols-5">
-        <Panel title="Fila de alertas" className="lg:col-span-3" summary={`${eventos.length} em destaque de ${int(alertas.total_eventos)}`} actions={<Segmented label="Regra" value={regra} onChange={setRegra} options={[{ value: "todas", label: "Todas" }, ...alertas.regras.map((r) => ({ value: r.id, label: r.id }))]} />}>
+      <div className="grid gap-4 xl:grid-cols-5">
+        <Panel ask="Alertas R1" title="Fila de alertas" className="xl:col-span-3" summary={`${eventos.length} em destaque de ${int(alertas.total_eventos)}`} actions={<Segmented label="Regra" value={regra} onChange={setRegra} options={[{ value: "todas", label: "Todas" }, ...alertas.regras.map((r) => ({ value: r.id, label: r.id }))]} />}>
           <div className="max-h-[34rem] overflow-auto scrollbar-thin">
             <table className="w-full text-xs tabular-nums">
               <thead className="sticky top-0 bg-card">
@@ -86,17 +86,16 @@ export function AlertasView() {
           </div>
         </Panel>
 
-        <div className="space-y-4 lg:col-span-2">
-          <Panel title="Mensagem ao gerente" summary="exemplo de envio por WhatsApp" actions={<Segmented label="Loja" value={lojaMsg} onChange={setLojaMsg} options={lojas.map((l, i) => ({ value: l.nome, label: LOJAS_CURTAS[i] }))} />}>
+        <div className="space-y-4 xl:col-span-2">
+          <Panel title="Mensagem ao gerente" summary="exemplo de envio por WhatsApp" info="Texto montado a partir dos mesmos dados da fila. No fluxo real, um agendamento diário consulta o estoque, aplica as regras e envia por WhatsApp ou e-mail." actions={<Segmented label="Loja" value={lojaMsg} onChange={setLojaMsg} options={lojas.map((l, i) => ({ value: l.nome, label: LOJAS_CURTAS[i] }))} />}>
             <div className="rounded-xl bg-[hsl(95_25%_88%)] p-3">
               <div className="max-w-full rounded-lg rounded-tl-none bg-white p-3 text-[12px] leading-relaxed text-neutral-900 shadow-sm">
                 <Whats texto={alertas.mensagens_exemplo[lojaMsg] ?? ""} />
               </div>
             </div>
-            <Nota>Texto montado a partir dos mesmos dados da fila. No fluxo real, um agendamento diário consulta o estoque, aplica as regras e envia por WhatsApp ou e-mail.</Nota>
           </Panel>
 
-          <Panel title="Alertas por loja e regra" summary="todos os eventos do dia">
+          <Panel ask="Quantos alertas por loja?" title="Alertas por loja e regra" summary="todos os eventos do dia">
             <HeatGrid corner="Regra" cols={LOJAS_CURTAS} rows={linhas} colWidth="3.5rem" />
           </Panel>
         </div>

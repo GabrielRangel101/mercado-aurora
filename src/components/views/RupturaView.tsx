@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
-import { BarList, ChartBox, ChartTip, COR, COR_LOJA, EIXO, HeatGrid, Kpi, Nota, Panel, Segmented, Tag } from "@/components/aurora/kit";
+import { BarList, ChartBox, ChartTip, COR, COR_LOJA, EIXO, HeatGrid, Kpi, Panel, Segmented, KpiStrip } from "@/components/aurora/kit";
 import { DADOS, EVENTOS_SEMANAIS, LOJAS_CURTAS } from "@/lib/aurora-data";
 import { brlCompact, diaLabel, pct } from "@/lib/format";
 
@@ -37,14 +37,15 @@ export function RupturaView() {
 
   return (
     <div className="space-y-4">
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
         <Kpi label="Taxa de ruptura" valor={pct(r.taxa_ruptura_pct, 2)} tom="ruim" sub="SKU-loja-dias sem produto" />
         <Kpi label="Ruptura classe A" valor={pct(r.taxa_ruptura_A_pct, 2)} tom="ruim" sub="itens que mais pesam na receita" />
         <Kpi label="Venda perdida" valor={brlCompact(r.venda_perdida)} tom="ruim" sub={`${pct(r.venda_perdida_pct_receita, 2)} da receita`} destaque />
         <Kpi label="Concentração" valor={pct(topo[topo.length - 1].pct_acum, 0)} sub={`da venda perdida está em ${topo.length} SKUs`} info="Pareto da venda perdida: agir sobre poucos itens resolve boa parte do problema." />
-      </section>
+      </KpiStrip>
 
       <Panel
+        ask="Como evoluiu a taxa de ruptura por mês?"
         title="Taxa de ruptura por semana"
         summary="marcadores: eventos sazonais"
         actions={
@@ -60,7 +61,7 @@ export function RupturaView() {
         }
         info="A reposição segue a média recente de vendas, então demora a reagir a picos de demanda: a ruptura sobe nas semanas de Black Friday, Natal e Páscoa."
       >
-        <ChartBox height={300}>
+        <ChartBox height={360}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={semanas} margin={{ top: 18, right: 12, bottom: 0, left: -8 }}>
               <CartesianGrid stroke={COR.grade} vertical={false} />
@@ -79,8 +80,8 @@ export function RupturaView() {
         <Legenda />
       </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-5">
-        <Panel title="Pareto da venda perdida" className="lg:col-span-3" summary="top 15 SKUs">
+      <div className="grid gap-4 xl:grid-cols-5">
+        <Panel ask="Quais 10 SKUs concentram a venda perdida?" title="Pareto da venda perdida" className="xl:col-span-3" summary="top 15 SKUs">
           <div className="overflow-x-auto scrollbar-thin">
             <table className="w-full text-xs tabular-nums">
               <thead>
@@ -112,19 +113,16 @@ export function RupturaView() {
               </tbody>
             </table>
           </div>
-          <Nota>
-            <Tag tom="risco">Ação</Tag> Revisar prazo de entrega e ponto de pedido destes itens antes de olhar o resto do catálogo.
-          </Nota>
         </Panel>
 
-        <Panel title="Ruptura por dia da semana" className="lg:col-span-2" info="Quanto mais vermelho, maior a taxa de ruptura naquele dia.">
+        <Panel ask="Ruptura por dia da semana" title="Ruptura por dia da semana" className="xl:col-span-2" info="Quanto mais vermelho, maior a taxa de ruptura naquele dia.">
           <HeatGrid corner="Dia" cols={LOJAS_CURTAS} rows={linhasDow} />
         </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Venda perdida por semana" summary="R$, empilhado por loja">
-          <ChartBox height={240}>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel ask="Venda perdida por loja" title="Venda perdida por semana" summary="R$, empilhado por loja">
+          <ChartBox height={300}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={semanas} margin={{ top: 8, right: 12, bottom: 0, left: -4 }}>
                 <CartesianGrid stroke={COR.grade} vertical={false} />
@@ -139,7 +137,7 @@ export function RupturaView() {
           </ChartBox>
         </Panel>
 
-        <Panel title="Ruptura por categoria" summary="% de SKU-loja-dias sem produto">
+        <Panel ask="Qual a pior categoria em ruptura?" title="Ruptura por categoria" summary="% de SKU-loja-dias sem produto">
           <BarList
             items={porCategoria.map((c) => ({
               label: c.categoria,

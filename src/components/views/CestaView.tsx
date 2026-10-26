@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarList, COR, Kpi, Nota, Panel, Segmented } from "@/components/aurora/kit";
+import { BarList, COR, Kpi, Panel, Segmented, KpiStrip } from "@/components/aurora/kit";
 import { DADOS } from "@/lib/aurora-data";
 import { dec, int, pct } from "@/lib/format";
 
@@ -23,7 +23,7 @@ export function CestaView() {
 
   return (
     <div className="space-y-4">
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
         <Kpi label="Cestas analisadas" valor={int(cesta.n_cestas)} sub="cupons sintéticos por missão de compra" />
         <Kpi label="Itens por cesta" valor={dec(cesta.itens_por_cesta_media, 1)} sub="média de produtos distintos" />
         <Kpi label="Item mais presente" valor={pct(cesta.itens_mais_presentes[0].penetracao_pct, 0)} sub={cesta.itens_mais_presentes[0].item} info="Penetração: % das cestas que levam o item." />
@@ -34,12 +34,13 @@ export function CestaView() {
           destaque
           info="Confiança: entre as cestas com o primeiro item, % que também têm o segundo."
         />
-      </section>
+      </KpiStrip>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid gap-4 xl:grid-cols-5">
         <Panel
-          title="Pares que saem juntos"
-          className="lg:col-span-3"
+          ask="Quais os pares de maior lift?"
+        title="Pares que saem juntos"
+          className="xl:col-span-3"
           actions={
             <Segmented
               label="Ordenar por"
@@ -51,7 +52,7 @@ export function CestaView() {
               ]}
             />
           }
-          info="Suporte: % das cestas com os dois itens. Confiança: dado o item A, chance de levar B. Lift: quantas vezes o par aparece mais do que o acaso (1 = sem relação)."
+          info="Suporte: % das cestas com os dois itens. Confiança: dado o item A, chance de levar B. Lift: quantas vezes o par aparece mais do que o acaso (1 = sem relação). Aqui os valores são altos por construção: as cestas são geradas por missões de compra. Em dado real, lift entre 1,5 e 4 já é um sinal forte."
         >
           <div className="overflow-x-auto scrollbar-thin">
             <table className="w-full text-xs tabular-nums">
@@ -88,14 +89,13 @@ export function CestaView() {
               </tbody>
             </table>
           </div>
-          <Nota>Lift acima de 1 significa que os itens saem juntos mais do que o acaso. Os valores aqui são altos por construção: as cestas são geradas por missões de compra (churrasco, café da manhã, macarronada...). Em dado real, lift entre 1,5 e 4 já é um sinal forte.</Nota>
         </Panel>
 
-        <div className="space-y-4 lg:col-span-2">
-          <Panel title="Itens mais presentes" summary="% das cestas">
+        <div className="space-y-4 xl:col-span-2">
+          <Panel ask="Quais os itens mais presentes nas cestas?" title="Itens mais presentes" summary="% das cestas">
             <BarList items={cesta.itens_mais_presentes.slice(0, 10).map((i) => ({ label: i.item, value: i.penetracao_pct, texto: pct(i.penetracao_pct, 1), cor: COR.verde }))} />
           </Panel>
-          <Panel title="Missões de compra" summary="% das cestas (uma cesta pode ter mais de uma)">
+          <Panel ask="Quais as missões de compra?" title="Missões de compra" summary="% das cestas (uma cesta pode ter mais de uma)">
             <BarList items={missoes.map(([nome, v]) => ({ label: nome, value: v, texto: pct(v, 1), cor: COR.azul }))} />
           </Panel>
         </div>

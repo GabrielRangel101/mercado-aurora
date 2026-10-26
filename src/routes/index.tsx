@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AiProvider } from "@/components/ai/ai-store";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppShell } from "@/components/shell/AppShell";
 import { AlertasView } from "@/components/views/AlertasView";
@@ -47,9 +48,11 @@ function Index() {
   const View = VIEWS[view];
   return (
     <TooltipProvider delayDuration={150}>
-      <AppShell view={view} periodo={PERIODO}>
-        <View />
-      </AppShell>
+      <AiProvider>
+        <AppShell view={view} periodo={PERIODO}>
+          <View />
+        </AppShell>
+      </AiProvider>
     </TooltipProvider>
   );
 }
