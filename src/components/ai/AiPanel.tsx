@@ -104,7 +104,7 @@ function BlocoView({ b }: { b: Bloco }) {
   );
 }
 
-function RespostaView({ r, onPergunta }: { r: Resposta; onPergunta: (q: string) => void }) {
+export function RespostaView({ r, onPergunta }: { r: Resposta; onPergunta: (q: string) => void }) {
   return (
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
