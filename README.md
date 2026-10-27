@@ -57,3 +57,12 @@ bun install   # ou npm install
 bun dev       # ou npm run dev
 bun run test
 ```
+
+## Visão geral: leitura de gerente
+
+- Filtros fixos no cabeçalho (loja e período); KPIs comparados com metas e com a média de 12 meses ou a rede, nunca com o mês anterior.
+- Metas em `src/lib/metas.ts` são premissas fictícias do autor; ajuste conforme o negócio.
+- Ponte da margem em cascata (bruta → vencimento → avaria → quebra → furto → real), recalculada por loja e período.
+- Sinais ordenados por dinheiro em risco, com responsável e lista de itens.
+- Simulador com premissas editáveis e ganho líquido (capital parado, vencimento extra, operação, remarcação).
+- Limites: 12 meses de dados (sem comparação com o ano anterior) e sem preço de gôndola (sem elasticidade).

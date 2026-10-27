@@ -85,19 +85,24 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
               <h1 className="truncate font-display text-[20px] font-semibold leading-tight tracking-tight text-foreground 2xl:text-[22px]">{atual.titulo}</h1>
               <p className="hidden truncate text-[12px] text-muted-foreground sm:block">{atual.sub}</p>
             </div>
+            <span className="ml-auto hidden shrink-0 items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning sm:inline-flex" title="Rede fictícia: marcas, lojas e números são inventados">
+              <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+              Dados sintéticos · rede fictícia
+            </span>
             <button
               type="button"
               onClick={ai.abrir}
-              className="ml-auto hidden min-w-0 max-w-sm flex-1 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-left text-[13px] text-muted-foreground shadow-sm transition-colors hover:border-[var(--brand)] md:flex"
+              className="ml-3 hidden min-w-0 max-w-sm flex-1 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-left text-[13px] text-muted-foreground shadow-sm transition-colors hover:border-[var(--brand)] md:flex"
             >
               <Sparkles className="size-4 shrink-0 text-brand" aria-hidden />
               <span className="truncate">Pergunte aos dados…</span>
             </button>
-            <button type="button" onClick={ai.alternar} aria-pressed={ai.aberto} className={cn("ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold md:ml-0", ai.aberto ? "bg-brand text-brand-foreground" : "bg-primary text-primary-foreground")}>
+            <button type="button" onClick={ai.alternar} aria-pressed={ai.aberto} className={cn("ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold sm:ml-0", ai.aberto ? "bg-brand text-brand-foreground" : "bg-primary text-primary-foreground")}>
               <Sparkles className="size-4" aria-hidden />
               <span className="hidden sm:inline">Modo IA</span>
             </button>
           </div>
+          <div id="barra-filtros" />
           <nav aria-label="Telas do dashboard" className="scrollbar-thin flex gap-1 overflow-x-auto px-4 pb-2 lg:hidden">
             {VIEWS.map((v) => (
               <Link

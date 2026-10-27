@@ -137,6 +137,11 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
   );
 }
 
+export interface MetaKpi {
+  texto: string;
+  status: "ok" | "atencao" | "ruim";
+}
+
 export interface Delta {
   texto: string;
   /** true = mudança favorável */
@@ -158,6 +163,7 @@ export function Kpi({
   spark,
   destaque,
   delta,
+  meta,
   ask,
 }: {
   label: string;
@@ -168,6 +174,7 @@ export function Kpi({
   spark?: number[];
   destaque?: boolean;
   delta?: Delta;
+  meta?: MetaKpi;
   ask?: string;
 }) {
   const dados = spark?.map((v, i) => ({ i, v }));
@@ -188,11 +195,20 @@ export function Kpi({
               {delta.texto}
             </p>
           )}
+          {meta && (
+            <p className={cn("flex items-center gap-1.5 text-[11px] font-medium", destaque ? "text-primary-foreground/90" : "text-foreground")}>
+              <span className={cn("size-2 shrink-0 rounded-full", meta.status === "ok" ? "bg-positive-fill" : meta.status === "atencao" ? "bg-cat-5" : "bg-danger")} aria-hidden />
+              {meta.texto}
+            </p>
+          )}
           {sub && <p className={cn("text-[11px] leading-snug", destaque ? "text-primary-foreground/70" : "text-muted-foreground")}>{sub}</p>}
         </div>
         {dados && (
-          <div className="h-9 w-20 shrink-0" aria-hidden>
-            <MiniLine dados={dados} cor={destaque ? "hsl(26 95% 62%)" : cor} />
+          <div className="w-20 shrink-0" aria-hidden>
+            <div className="h-9">
+              <MiniLine dados={dados} cor={destaque ? "hsl(26 95% 62%)" : cor} />
+            </div>
+            <p className={cn("text-right text-[9px]", destaque ? "text-primary-foreground/60" : "text-muted-foreground")}>12 meses</p>
           </div>
         )}
       </div>

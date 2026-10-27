@@ -4,7 +4,7 @@
 // reaproveitar `executar()` sem mexer em mais nada.
 // Puro (sem React, sem alias "@"), testado em src/test/ask.test.ts.
 import { brlCompact, dec, int, mesLabel, pct, pp } from "./format";
-import { diaLongo, ganhoSimulado, gerarInsights, lojaCurta, type ViewId } from "./insights";
+import { diaLongo, ganhoLiquido, ganhoSimulado, gerarInsights, lojaCurta, premissasPadrao, type ViewId } from "./insights";
 import type { Dados, VendaDia, VendaSemana } from "./types";
 
 /* ───────────────────────── tipos públicos ───────────────────────── */
@@ -1034,12 +1034,13 @@ function responderSimulacao(pergunta: string, t: string, d: Dados): Resposta {
   rec = Math.min(100, rec);
   red = Math.min(100, red);
   const g = ganhoSimulado(d, rec, red);
+  const gl = ganhoLiquido(d, { ...premissasPadrao(d), recuperarPct: rec, reduzirPerdaPct: red });
   const r = d.meta.resumo;
   return {
     pergunta,
     titulo: "Simulação de ganho",
-    texto: `Recuperando ${pct(rec, 0)} da venda perdida e reduzindo ${pct(red, 0)} da perda, o ganho é de ${brlCompact(g.total)} por ano: ${brlCompact(g.margemRecuperada)} de margem sobre ${brlCompact(g.vendaRecuperada)} de venda recuperada e ${brlCompact(g.perdaEvitada)} de perda evitada. A margem real iria de ${pct(r.margem_real_pct)} para ${pct(r.margem_real_pct + g.ppMargem)}. Premissa: venda recuperada rende a margem bruta média da rede, sem efeitos de segunda ordem.`,
-    blocos: [{ tipo: "stats", itens: [{ rotulo: "Ganho anual", valor: brlCompact(g.total), sub: `${dec(g.ppMargem, 2)} p.p. de margem real` }, { rotulo: "Venda recuperada", valor: brlCompact(g.vendaRecuperada), sub: `${pct(rec, 0)} de ${brlCompact(r.venda_perdida)}` }, { rotulo: "Perda evitada", valor: brlCompact(g.perdaEvitada), sub: `${pct(red, 0)} de ${brlCompact(r.perda_custo)}` }] }],
+    texto: `Recuperando ${pct(rec, 0)} da venda perdida e reduzindo ${pct(red, 0)} da perda, o ganho é de ${brlCompact(g.total)} por ano: ${brlCompact(g.margemRecuperada)} de margem sobre ${brlCompact(g.vendaRecuperada)} de venda recuperada e ${brlCompact(g.perdaEvitada)} de perda evitada. A margem real iria de ${pct(r.margem_real_pct)} para ${pct(r.margem_real_pct + g.ppMargem)}. Descontando o custo da ação (capital parado em estoque extra, vencimento extra, operação e remarcação), o ganho líquido é de ${brlCompact(gl.liquido)} por ano (${brlCompact(gl.custos)} de custos). Premissas editáveis na Visão geral: venda recuperada rende a margem bruta média da rede, ${premissasPadrao(d).diasEstoque} dias de estoque extra a ${premissasPadrao(d).capitalAnoPct}% ao ano.`,
+    blocos: [{ tipo: "stats", itens: [{ rotulo: "Ganho bruto", valor: brlCompact(g.total), sub: `${dec(g.ppMargem, 2)} p.p. de margem real` }, { rotulo: "Ganho líquido", valor: brlCompact(gl.liquido), sub: `após ${brlCompact(gl.custos)} de custos` }, { rotulo: "Venda recuperada", valor: brlCompact(g.vendaRecuperada), sub: `${pct(rec, 0)} de ${brlCompact(r.venda_perdida)}` }, { rotulo: "Perda evitada", valor: brlCompact(g.perdaEvitada), sub: `${pct(red, 0)} de ${brlCompact(r.perda_custo)}` }] }],
     seguintes: ["Simule recuperar 50% da venda perdida", "Simule reduzir 40% da perda", "Quais SKUs concentram a venda perdida?"],
     cobertura: "ok",
     fonte: "Fonte: resumo da rede e simulador do painel",
