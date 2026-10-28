@@ -1,3 +1,4 @@
+import { DADOS } from "@/lib/aurora-data";
 import { useEffect, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Bell, LayoutDashboard, PackageX, Percent, ShoppingBasket, Sparkles, Store, Trash2 } from "lucide-react";
@@ -71,6 +72,7 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
         <div className="mt-auto space-y-1 px-2 text-[11px] leading-snug text-[var(--side-muted)]">
           <p className="font-medium text-[var(--side-fg)]">{periodo}</p>
           <p>Rede fictícia de 4 lojas. Dados sintéticos gerados em Python.</p>
+          {DADOS.meta.versao_dados && <p>Dados {DADOS.meta.versao_dados}</p>}
         </div>
       </aside>
 

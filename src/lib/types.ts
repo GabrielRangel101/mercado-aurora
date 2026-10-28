@@ -19,6 +19,7 @@ export interface Resumo {
 
 export interface Meta {
   marca: string;
+  versao_dados?: string;
   aviso: string;
   periodo: { inicio: string; fim: string; dias: number; semanas_completas: number };
   lojas: { id: number; nome: string }[];
@@ -210,6 +211,8 @@ export interface HoraCaixa {
   gap: number;
   falta: number;
   sobra: number;
+  cupons_em_fila: number;
+  margem_em_risco_hora: number;
   venda_em_risco_hora: number;
   custo_reforco_hora: number;
   decisao: "Reforçar" | "Manter escala" | "";
@@ -221,6 +224,7 @@ export interface CaixasPremissas {
   desistencia_fila_pct: number;
   custo_operador_hora: number;
   ticket_por_loja: Record<string, number>;
+  margem_bruta_por_loja: Record<string, number>;
 }
 
 export interface RupturaCausas {
@@ -276,6 +280,10 @@ export interface EventoAlerta {
   acao: string;
   dias_para_vencer?: number | null;
   sobra_un?: number | null;
+  dias_para_cobrir?: number;
+  desconto_pct?: number | null;
+  recuperado_rs?: number | null;
+  abaixo_do_custo?: boolean | null;
 }
 
 export interface Alertas {
@@ -285,6 +293,9 @@ export interface Alertas {
   severidade_faixas: { alta: number; media: number };
   deduplicacao: { sku_loja_com_mais_de_uma_regra: number; alertas_enviados: number; regra: string };
   max_itens_mensagem: number;
+  r4_piso_rs: number;
+  r4_mais_proximos: { loja_id: number; produto: string; cobertura_dias: number; parado_rs: number }[];
+  risco_total_rs: number;
   contagem_por_loja_regra: { loja_id: number; regra: string; n: number }[];
   total_eventos: number;
   eventos_destaque: EventoAlerta[];

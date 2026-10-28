@@ -77,3 +77,11 @@ bun run test
 - **Cesta:** margem do combo, item de tráfego e recomendação por par; ranking de lift só com suporte de 2% ou mais.
 - **Carga de dados:** gráficos que dependem da série diária tentam 3 vezes e mostram "Tentar de novo" em caso de erro.
 - **Layout:** barra lateral só a partir de 1280 px; abaixo disso, navegação no topo.
+
+## Revisão do gerente (3ª rodada)
+
+- **Caixas:** a decisão compara a margem da venda salva (não a venda) com o custo do operador, com desistência da fila e custo/hora editáveis na tela e o ponto de equilíbrio calculado.
+- **Alertas:** R0 (estoque zero) separado de R1 (ruptura iminente). R1/R2 usam cobertura contra o prazo até a próxima entrega (dias até o próximo pedido + prazo do item), então itens de reposição diária só disparam ao consumir o estoque de segurança. Mensagem ordenada por urgência e depois por R$, números com vírgula. R3 com remarcação escalonada (−40/−25/−15%) e valor recuperado. R4 mostra os itens mais próximos do piso.
+- **Sinais:** uma base só, ganho anual recuperável (premissa explícita em cada linha). Perda total, gap estrutural de tráfego e risco de um dia ficam como contexto, fora da ordenação. Novo sinal da loja de menor margem real.
+- **Metas:** editáveis na Visão geral, com a origem declarada (premissa do autor, sem benchmark).
+- **Rastreio:** `versao_dados` no `meta.json` e na barra lateral; seed fixa (`20261024`). Os números só mudam quando o gerador muda.

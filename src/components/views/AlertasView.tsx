@@ -22,9 +22,10 @@ function Whats({ texto }: { texto: string }) {
 }
 
 function detalhe(e: EventoAlerta): string {
-  if (e.regra === "R3") return `${int(e.sobra_un ?? e.estoque)} un não vendem até vencer em ${e.dias_para_vencer} d`;
+  if (e.regra === "R0") return `0 un · vende ~${int(e.venda_diaria_media)} por dia`;
+  if (e.regra === "R3") return `${int(e.sobra_un ?? e.estoque)} un não vendem até vencer em ${e.dias_para_vencer} d · remarcar −${e.desconto_pct}% recupera ${brlCompact(e.recuperado_rs ?? 0)}${e.abaixo_do_custo ? " (abaixo do custo, mas melhor que descartar)" : ""}`;
   if (e.regra === "R4") return `${int(e.estoque)} un · ${dec(e.cobertura_dias, 0)} dias de estoque`;
-  return `${int(e.estoque)} un · ${dec(e.cobertura_dias, 1)} d de cobertura`;
+  return `${int(e.estoque)} un · ${dec(e.cobertura_dias, 1)} d de cobertura · precisa durar ${e.dias_para_cobrir} d`;
 }
 
 export function AlertasView() {
@@ -58,14 +59,28 @@ export function AlertasView() {
         </p>
       </div>
 
-      <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
+      <KpiStrip className="md:grid-cols-5 xl:grid-cols-5">
         {alertas.regras.map((r) => (
-          <Kpi key={r.id} label={`${r.id} · ${r.nome}`} valor={int(totalPor(r.id))} sub={totalPor(r.id) === 0 ? `nenhum item passa do piso hoje · ${r.horario}` : `${r.horario} · para ${r.destino}`} tom={r.id === "R1" ? "ruim" : "neutro"} info={`${r.condicao}. Ação: ${r.acao}.`} />
+          <Kpi key={r.id} label={`${r.id} · ${r.nome}`} valor={int(totalPor(r.id))} sub={totalPor(r.id) === 0 ? `nenhum item passa do piso hoje · ${r.horario}` : `${r.horario} · para ${r.destino}`} tom={r.id === "R0" || r.id === "R1" ? "ruim" : "neutro"} info={`${r.condicao}. Ação: ${r.acao}.`} />
         ))}
       </KpiStrip>
 
       <div className="grid gap-4 xl:grid-cols-5">
-        <Panel ask="Alertas R1" title="Fila de alertas" className="xl:col-span-3" summary={`${eventos.length} em destaque de ${int(alertas.total_eventos)}`} actions={<Segmented label="Regra" value={regra} onChange={setRegra} options={[{ value: "todas", label: "Todas" }, ...alertas.regras.map((r) => ({ value: r.id, label: r.id }))]} />}>
+        <Panel ask="Alertas R1" title="Fila de alertas" className="xl:col-span-3" summary={`${eventos.length} em destaque de ${int(alertas.total_eventos)} · risco do dia ${brlCompact(alertas.risco_total_rs)} (não é valor anual)`} actions={<Segmented label="Regra" value={regra} onChange={setRegra} options={[{ value: "todas", label: "Todas" }, ...alertas.regras.map((r) => ({ value: r.id, label: r.id }))]} />}>
+          {regra === "R4" && eventos.length === 0 && (
+            <div className="mb-3 rounded-lg border bg-background/40 p-3 text-xs leading-relaxed text-foreground">
+              <p>
+                <strong>Nenhum item passa do piso de {brlCompact(alertas.r4_piso_rs)} hoje.</strong> A regra continua ativa. Os mais próximos, abaixo do piso:
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
+                {alertas.r4_mais_proximos.map((x) => (
+                  <li key={`${x.loja_id}-${x.produto}`}>
+                    {x.produto} · {LOJAS_CURTAS[x.loja_id - 1]}: {dec(x.cobertura_dias, 0)} dias de estoque, {brlCompact(x.parado_rs)} parados
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="max-h-[34rem] overflow-auto scrollbar-thin">
             <table className="w-full text-xs tabular-nums">
               <thead className="sticky top-0 bg-card">

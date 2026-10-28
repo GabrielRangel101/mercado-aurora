@@ -53,8 +53,8 @@ describe("dados gerados", () => {
 describe("leituras automáticas", () => {
   const ins = gerarInsights(d);
 
-  it("gera as sete leituras com título e texto", () => {
-    expect(ins).toHaveLength(7);
+  it("gera as oito leituras com título e texto", () => {
+    expect(ins).toHaveLength(8);
     for (const i of ins) {
       expect(i.titulo.length).toBeGreaterThan(10);
       expect(i.texto.length).toBeGreaterThan(10);

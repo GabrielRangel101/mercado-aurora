@@ -9,6 +9,15 @@ export const METAS = {
 } as const;
 
 export type ChaveMeta = keyof typeof METAS;
+export type Metas = Record<ChaveMeta, number>;
+
+export const ROTULO_META: Record<ChaveMeta, string> = {
+  margem_real_pct: "Margem real (mínimo)",
+  perda_pct: "Perda, % da receita (máximo)",
+  ruptura_pct: "Ruptura (máximo)",
+  ruptura_A_pct: "Ruptura classe A (máximo)",
+  venda_perdida_pct: "Venda perdida, % da receita (máximo)",
+};
 export type StatusMeta = "ok" | "atencao" | "ruim";
 
 /** Tolerância relativa da faixa "atenção" (acima/abaixo da meta, conforme a direção). */
@@ -24,8 +33,8 @@ export interface AvaliacaoMeta {
   status: StatusMeta;
 }
 
-export function avaliarMeta(chave: ChaveMeta, valor: number): AvaliacaoMeta {
-  const meta = METAS[chave];
+export function avaliarMeta(chave: ChaveMeta, valor: number, metas: Metas = METAS): AvaliacaoMeta {
+  const meta = metas[chave];
   const gap = valor - meta;
   const tol = TOL[chave];
   let status: StatusMeta;

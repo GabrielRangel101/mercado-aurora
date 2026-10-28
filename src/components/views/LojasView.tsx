@@ -6,11 +6,12 @@ import { brl, brlCompact, dec, int, pct } from "@/lib/format";
 
 const DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
 const FAIXAS = [
-  { rotulo: "Dias 1–7", de: 1, ate: 7 },
-  { rotulo: "Dias 8–14", de: 8, ate: 14 },
-  { rotulo: "Dias 15–22", de: 15, ate: 22 },
-  { rotulo: "Dias 23–27", de: 23, ate: 27 },
-  { rotulo: "Dias 28–31", de: 28, ate: 31 },
+  { rotulo: "Dias 1–5", de: 1, ate: 5 },
+  { rotulo: "Dias 6–10", de: 6, ate: 10 },
+  { rotulo: "Dias 11–15", de: 11, ate: 15 },
+  { rotulo: "Dias 16–20", de: 16, ate: 20 },
+  { rotulo: "Dias 21–25", de: 21, ate: 25 },
+  { rotulo: "Dias 26–31", de: 26, ate: 31 },
 ];
 
 export function LojasView() {
@@ -178,60 +179,96 @@ function Celula({ v, bom, ruim, f, ultima }: { v: number; bom: number; ruim: num
 function DecisaoCaixas({ lojaSel }: { lojaSel: number }) {
   const { horario, caixasPremissas: pr } = DADOS;
   const SEMANAS = 52;
-  const grupos = new Map<string, { loja: number; dia: string; horas: number[]; faltaMax: number; venda: number; custo: number }>();
+  const [desist, setDesist] = useState(pr.desistencia_fila_pct);
+  const [custoHora, setCustoHora] = useState(pr.custo_operador_hora);
+  const grupos = new Map<string, { loja: number; dia: string; horas: number[]; faltaMax: number; fila: number; custoHoras: number }>();
   for (const h of horario) {
     if (h.falta < 1) continue;
     const k = `${h.loja_id}-${h.dia}`;
-    const g = grupos.get(k) ?? { loja: h.loja_id, dia: h.dia, horas: [], faltaMax: 0, venda: 0, custo: 0 };
+    const g = grupos.get(k) ?? { loja: h.loja_id, dia: h.dia, horas: [], faltaMax: 0, fila: 0, custoHoras: 0 };
     g.horas.push(h.hora);
     g.faltaMax = Math.max(g.faltaMax, h.falta);
-    g.venda += h.venda_em_risco_hora;
-    g.custo += h.custo_reforco_hora;
+    g.fila += h.cupons_em_fila;
+    g.custoHoras += h.falta;
     grupos.set(k, g);
   }
-  const linhas = [...grupos.values()].sort((a, b) => b.venda - b.custo - (a.venda - a.custo));
-  const total = linhas.reduce((a, g) => a + Math.max(0, g.venda - g.custo) * SEMANAS, 0);
+  const linhas = [...grupos.values()]
+    .map((g) => {
+      const ticket = pr.ticket_por_loja[String(g.loja)];
+      const margem = pr.margem_bruta_por_loja[String(g.loja)] / 100;
+      const venda = g.fila * (desist / 100) * ticket;
+      const ganho = venda * margem;
+      const custo = g.custoHoras * custoHora;
+      return { ...g, venda, ganho, custo, saldo: (ganho - custo) * SEMANAS };
+    })
+    .sort((a, b) => b.saldo - a.saldo);
+  const total = linhas.reduce((a, g) => a + Math.max(0, g.saldo), 0);
+  const equilibrio = (() => {
+    // desistência em que o conjunto deixa de compensar
+    const f = linhas.reduce((a, g) => a + g.fila * pr.ticket_por_loja[String(g.loja)] * (pr.margem_bruta_por_loja[String(g.loja)] / 100), 0);
+    const c = linhas.reduce((a, g) => a + g.custo, 0);
+    return f > 0 ? (100 * c) / f : 0;
+  })();
   return (
     <Panel
       title="Falta de caixa: vale reforçar a escala?"
-      summary={`saldo de reforço nas faixas críticas: ${brlCompact(total)} por ano`}
+      summary={`saldo das faixas que compensam: ${brlCompact(total)} por ano`}
       ask="Onde falta caixa?"
-      info={`Premissas: um caixa atende ${pr.cupons_por_hora_por_caixa} cupons por hora a ${dec(100 * pr.utilizacao_alvo, 0)}% de uso; ${dec(pr.desistencia_fila_pct, 0)}% dos cupons acima dessa capacidade desistem na fila e levam o ticket médio da loja; operador custa ${brl(pr.custo_operador_hora)} por hora com encargos. Saldo = venda em risco − custo do reforço, multiplicado por 52 semanas.`}
+      info="O ganho de um reforço é a MARGEM da venda que deixa de ir embora, não a venda inteira. Saldo = (cupons acima da capacidade × % que desiste × ticket médio × margem bruta da loja − custo das horas de operador) × 52 semanas. Não conto fidelização nem ticket maior de quem fica, o que favoreceria o reforço."
     >
+      <div className="mb-3 grid gap-3 rounded-lg border bg-background/40 p-3 sm:grid-cols-2 xl:grid-cols-3">
+        <label className="flex items-center justify-between gap-3 text-[12px]">
+          <span>
+            <span className="font-medium text-foreground">Desistem da fila</span>
+            <span className="block text-[11px] text-muted-foreground">dos cupons acima da capacidade; é o número que decide o resultado</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <input type="number" min={0} max={60} step={1} value={desist} onChange={(e) => setDesist(Math.max(0, Math.min(60, Number(e.target.value) || 0)))} className="w-16 rounded-md border bg-background px-1.5 py-1 text-right tabular-nums" />%
+          </span>
+        </label>
+        <label className="flex items-center justify-between gap-3 text-[12px]">
+          <span className="font-medium text-foreground">Custo do operador por hora</span>
+          <span className="flex items-center gap-1">
+            R$ <input type="number" min={0} max={200} step={1} value={custoHora} onChange={(e) => setCustoHora(Math.max(0, Math.min(200, Number(e.target.value) || 0)))} className="w-16 rounded-md border bg-background px-1.5 py-1 text-right tabular-nums" />
+          </span>
+        </label>
+        <p className="text-[11.5px] leading-snug text-muted-foreground">
+          Com essas premissas o conjunto empata em {dec(equilibrio, 0)}% de desistência. Acima disso, reforçar compensa; abaixo, não.
+        </p>
+      </div>
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full min-w-[34rem] text-xs tabular-nums">
+        <table className="w-full min-w-[40rem] text-xs tabular-nums">
           <thead>
             <tr className="text-left text-[11px] text-muted-foreground">
               <th className="py-1.5 pr-2 font-medium">Loja e dia</th>
               <th className="px-2 py-1.5 font-medium">Horas</th>
               <th className="px-2 py-1.5 text-right font-medium">Falta</th>
               <th className="px-2 py-1.5 text-right font-medium">Venda em risco/dia</th>
-              <th className="px-2 py-1.5 text-right font-medium">Custo do reforço/dia</th>
+              <th className="px-2 py-1.5 text-right font-medium">Margem dela</th>
+              <th className="px-2 py-1.5 text-right font-medium">Custo do reforço</th>
               <th className="px-2 py-1.5 text-right font-medium">Saldo/ano</th>
               <th className="py-1.5 pl-2 font-medium">Decisão</th>
             </tr>
           </thead>
           <tbody>
-            {linhas.map((g) => {
-              const saldo = (g.venda - g.custo) * SEMANAS;
-              return (
-                <tr key={`${g.loja}-${g.dia}`} className={`border-t ${g.loja === lojaSel ? "bg-primary/5" : ""}`}>
-                  <td className="py-2 pr-2 font-medium text-foreground">
-                    {LOJAS_CURTAS[g.loja - 1]} · {g.dia}
-                  </td>
-                  <td className="px-2 py-2 text-muted-foreground">{g.horas.map((x) => `${x}h`).join(", ")}</td>
-                  <td className="px-2 py-2 text-right text-foreground">
-                    {g.faltaMax} caixa{g.faltaMax > 1 ? "s" : ""}
-                  </td>
-                  <td className="px-2 py-2 text-right text-foreground">{brl(g.venda)}</td>
-                  <td className="px-2 py-2 text-right text-foreground">{brl(g.custo)}</td>
-                  <td className={`px-2 py-2 text-right font-semibold ${saldo >= 0 ? "text-positive" : "text-danger"}`}>
-                    {saldo >= 0 ? "+" : "−"} {brlCompact(Math.abs(saldo))}
-                  </td>
-                  <td className="py-2 pl-2 font-medium text-foreground">{saldo >= 0 ? "Reforçar" : "Manter escala"}</td>
-                </tr>
-              );
-            })}
+            {linhas.map((g) => (
+              <tr key={`${g.loja}-${g.dia}`} className={`border-t ${g.loja === lojaSel ? "bg-primary/5" : ""}`}>
+                <td className="py-2 pr-2 font-medium text-foreground">
+                  {LOJAS_CURTAS[g.loja - 1]} · {g.dia}
+                </td>
+                <td className="px-2 py-2 text-muted-foreground">{g.horas.map((x) => `${x}h`).join(", ")}</td>
+                <td className="px-2 py-2 text-right text-foreground">
+                  {g.faltaMax} caixa{g.faltaMax > 1 ? "s" : ""}
+                </td>
+                <td className="px-2 py-2 text-right text-muted-foreground">{brl(g.venda)}</td>
+                <td className="px-2 py-2 text-right text-foreground">{brl(g.ganho)}</td>
+                <td className="px-2 py-2 text-right text-foreground">{brl(g.custo)}</td>
+                <td className={`px-2 py-2 text-right font-semibold ${g.saldo >= 0 ? "text-positive" : "text-danger"}`}>
+                  {g.saldo >= 0 ? "+" : "−"} {brlCompact(Math.abs(g.saldo))}
+                </td>
+                <td className="py-2 pl-2 font-medium text-foreground">{g.saldo >= 0 ? "Reforçar" : "Manter escala"}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

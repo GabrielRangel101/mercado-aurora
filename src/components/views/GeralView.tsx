@@ -9,14 +9,14 @@ import { DADOS, INSIGHTS, LOJAS_CURTAS, loadVendasDiarias } from "@/lib/aurora-d
 import { brlCompact, dec, mesLabel, pct, pp } from "@/lib/format";
 import { PERIODOS, ponteMargem, resumir, serieMensal, ultimosMeses, type PeriodoId, type ResumoGeral } from "@/lib/geral";
 import { ganhoLiquido, lojaCurta, premissasPadrao, type Insight, type Premissas } from "@/lib/insights";
-import { avaliarMeta, METAS, type ChaveMeta } from "@/lib/metas";
+import { avaliarMeta, METAS, ROTULO_META, type ChaveMeta, type Metas } from "@/lib/metas";
 import { cn } from "@/lib/utils";
 
 const COR_SEV = { risco: "bg-danger", atencao: "bg-cat-5", info: "bg-cat-3" } as const;
 const ROT_SEV = { risco: "Agir", atencao: "Atenção", info: "Informação" } as const;
 
-function metaKpi(chave: ChaveMeta, valor: number): MetaKpi {
-  const a = avaliarMeta(chave, valor);
+function metaKpi(chave: ChaveMeta, valor: number, metas: Metas): MetaKpi {
+  const a = avaliarMeta(chave, valor, metas);
   const nome = chave === "margem_real_pct" ? "margem" : "limite";
   return { status: a.status, texto: `Meta ${pct(a.meta, chave === "perda_pct" || chave === "venda_perdida_pct" ? 2 : 1)} · ${pp(a.gap, 2)}${nome === "margem" ? "" : ""}` };
 }
@@ -47,6 +47,10 @@ function perguntaDoInsight(i: Insight): string {
       return "Perda por categoria";
     case "caixas":
       return "Onde falta caixa?";
+    case "loja-margem": {
+      const pior = [...DADOS.lojas].sort((a, b) => a.margem_real_pct - b.margem_real_pct)[0];
+      return `Por que a margem real do ${lojaCurta(pior.nome)} é baixa?`;
+    }
     default:
       return "Alertas R1";
   }
@@ -55,6 +59,7 @@ function perguntaDoInsight(i: Insight): string {
 export function GeralView() {
   const [loja, setLoja] = useState(0);
   const [periodo, setPeriodo] = useState<PeriodoId>("12m");
+  const [metas, setMetas] = useState<Metas>({ ...METAS });
   const { data: diarias, erro: erroDiarias, recarregar } = useLazyEstado(loadVendasDiarias);
 
   const serie = useMemo(() => serieMensal(DADOS, diarias, loja), [diarias, loja]);
@@ -94,13 +99,15 @@ export function GeralView() {
         </div>
       ) : (
         <>
+          <MetasEditor metas={metas} setMetas={setMetas} />
+
           <KpiStrip>
             <Kpi label="Receita" valor={brlCompact(res.receita)} delta={loja === 0 && periodo !== "12m" && ref ? delta(res.receita / nMeses, ref.receita / 12, "rel", "alta") : undefined} sub={loja > 0 ? `soma de ${nMeses} ${nMeses > 1 ? "meses" : "mês"} · ${pct((100 * res.receita) / resRede.receita, 1)} da rede` : refLabel ? `soma de ${nMeses} ${nMeses > 1 ? "meses" : "mês"} · mensal ${refLabel}` : `soma de ${nMeses} meses · ${nomeLoja}`} spark={spark("receita")} info="Receita do período selecionado." ask="Como evoluiu a receita por mês?" />
             <Kpi label="Margem bruta" valor={pct(res.margem_bruta_pct)} delta={d((r) => r.margem_bruta_pct, "pp", "alta")} sub={refLabel} spark={spark("margem_bruta")} info="Receita menos custo da mercadoria vendida." ask="Margem bruta por categoria" />
-            <Kpi label="Margem real" valor={pct(res.margem_real_pct)} destaque delta={d((r) => r.margem_real_pct, "pp", "alta")} meta={metaKpi("margem_real_pct", res.margem_real_pct)} sub={`${pp(res.margem_real_pct - res.margem_bruta_pct)} pelas perdas`} spark={spark("margem_real")} info="(Receita − CMV − perda a custo) ÷ receita. É a métrica central do painel. Meta de exemplo definida pelo autor." ask="Por que a margem real é menor que a bruta?" />
-            <Kpi label="Perdas" valor={pct(res.perda_pct, 2)} tom="ruim" delta={d((r) => r.perda_pct, "pp", "queda")} meta={metaKpi("perda_pct", res.perda_pct)} sub={`${brlCompact(res.perda_custo)} a custo`} spark={spark("perda")} info="Vencimento, avaria, furto e quebra operacional, valorizados a custo." ask="Qual loja tem a maior perda?" />
-            <Kpi label="Ruptura" valor={pct(res.ruptura_pct, 2)} tom="ruim" delta={d((r) => r.ruptura_pct, "pp", "queda")} meta={metaKpi("ruptura_pct", res.ruptura_pct)} sub={loja === 0 && periodo === "12m" ? `Classe A: ${pct(DADOS.meta.resumo.taxa_ruptura_A_pct, 2)} (meta ${pct(METAS.ruptura_A_pct, 1)})` : undefined} spark={spark("ruptura")} info="SKU-loja-dias com demanda não atendida ÷ SKU-loja-dias com a loja aberta. É uma definição própria deste painel. Benchmarks de mercado costumam medir ruptura de gôndola por auditoria de prateleira e não são comparáveis: por isso a referência aqui é a meta interna, não um número de setor." ask="Ruptura por dia da semana" />
-            <Kpi label="Venda perdida" valor={brlCompact(res.venda_perdida)} tom="ruim" delta={loja === 0 && periodo !== "12m" && ref ? delta(res.venda_perdida / nMeses, ref.venda_perdida / 12, "rel", "queda") : d((r) => r.venda_perdida_pct, "pp", "queda")} meta={metaKpi("venda_perdida_pct", res.venda_perdida_pct)} sub={`${pct(res.venda_perdida_pct, 2)} da receita`} spark={spark("vp")} info="Unidades não atendidas × preço × 0,75 (premissa: 25% dos clientes levam outro item)." ask="Quais SKUs concentram a venda perdida?" />
+            <Kpi label="Margem real" valor={pct(res.margem_real_pct)} destaque delta={d((r) => r.margem_real_pct, "pp", "alta")} meta={metaKpi("margem_real_pct", res.margem_real_pct, metas)} sub={`${pp(res.margem_real_pct - res.margem_bruta_pct)} pelas perdas`} spark={spark("margem_real")} info="(Receita − CMV − perda a custo) ÷ receita. É a métrica central do painel. Meta de exemplo definida pelo autor." ask="Por que a margem real é menor que a bruta?" />
+            <Kpi label="Perdas" valor={pct(res.perda_pct, 2)} tom="ruim" delta={d((r) => r.perda_pct, "pp", "queda")} meta={metaKpi("perda_pct", res.perda_pct, metas)} sub={`${brlCompact(res.perda_custo)} a custo`} spark={spark("perda")} info="Vencimento, avaria, furto e quebra operacional, valorizados a custo." ask="Qual loja tem a maior perda?" />
+            <Kpi label="Ruptura" valor={pct(res.ruptura_pct, 2)} tom="ruim" delta={d((r) => r.ruptura_pct, "pp", "queda")} meta={metaKpi("ruptura_pct", res.ruptura_pct, metas)} sub={loja === 0 && periodo === "12m" ? `Classe A: ${pct(DADOS.meta.resumo.taxa_ruptura_A_pct, 2)} (meta ${pct(metas.ruptura_A_pct, 1)})` : undefined} spark={spark("ruptura")} info="SKU-loja-dias com demanda não atendida ÷ SKU-loja-dias com a loja aberta. É uma definição própria deste painel. Benchmarks de mercado costumam medir ruptura de gôndola por auditoria de prateleira e não são comparáveis: por isso a referência aqui é a meta interna, não um número de setor." ask="Ruptura por dia da semana" />
+            <Kpi label="Venda perdida" valor={brlCompact(res.venda_perdida)} tom="ruim" delta={loja === 0 && periodo !== "12m" && ref ? delta(res.venda_perdida / nMeses, ref.venda_perdida / 12, "rel", "queda") : d((r) => r.venda_perdida_pct, "pp", "queda")} meta={metaKpi("venda_perdida_pct", res.venda_perdida_pct, metas)} sub={`${pct(res.venda_perdida_pct, 2)} da receita`} spark={spark("vp")} info="Unidades não atendidas × preço × 0,75 (premissa: 25% dos clientes levam outro item)." ask="Quais SKUs concentram a venda perdida?" />
           </KpiStrip>
 
           <div className="grid gap-4 xl:grid-cols-12 2xl:gap-5">
@@ -119,7 +126,7 @@ export function GeralView() {
               </ChartBox>
             </Panel>
 
-            <Panel title="Margem real contra a meta" className="xl:col-span-4" summary={`meta ${pct(METAS.margem_real_pct, 1)}`} info="Eixo de 20% a 30% para não exagerar variações pequenas. A meta é um valor de exemplo definido pelo autor." ask="Como evoluiu a margem real por mês?">
+            <Panel title="Margem real contra a meta" className="xl:col-span-4" summary={`meta ${pct(metas.margem_real_pct, 1)}`} info="Eixo de 20% a 30% para não exagerar variações pequenas. A meta é uma premissa do autor, editável acima." ask="Como evoluiu a margem real por mês?">
               <ChartBox height={300}>
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={mensal} margin={{ top: 10, right: 8, bottom: 0, left: -12 }}>
@@ -127,7 +134,7 @@ export function GeralView() {
                     <XAxis dataKey="mes" tickFormatter={mesLabel} tick={EIXO} tickLine={false} axisLine={false} interval={0} />
                     <YAxis domain={[20, 30]} ticks={[20, 22, 24, 26, 28, 30]} tick={EIXO} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v}%`} />
                     <RTooltip content={<ChartTip titulo={(l) => mesLabel(String(l))} formato={(v) => pct(v, 2)} />} />
-                    <ReferenceLine y={METAS.margem_real_pct} stroke={COR.laranja} strokeDasharray="5 3" label={{ value: `meta ${pct(METAS.margem_real_pct, 1)}`, position: "insideTopRight", fontSize: 10, fill: COR.laranja }} />
+                    <ReferenceLine y={metas.margem_real_pct} stroke={COR.laranja} strokeDasharray="5 3" label={{ value: `meta ${pct(metas.margem_real_pct, 1)}`, position: "insideTopRight", fontSize: 10, fill: COR.laranja }} />
                     <Line type="monotone" dataKey="margemReal" name="Margem real" stroke={COR.verde} strokeWidth={2.6} dot={{ r: 3.5, strokeWidth: 2, fill: "var(--card)" }} activeDot={{ r: 5 }} isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -155,7 +162,7 @@ export function GeralView() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-12 2xl:gap-5">
-            <TabelaCategorias loja={loja} nomeLoja={nomeLoja} />
+            <TabelaCategorias loja={loja} nomeLoja={nomeLoja} metas={metas} />
             <Sinais />
           </div>
 
@@ -186,7 +193,7 @@ function BarraFiltros(p: { loja: number; setLoja: (n: number) => void; periodo: 
   );
 }
 
-function TabelaCategorias({ loja, nomeLoja }: { loja: number; nomeLoja: string }) {
+function TabelaCategorias({ loja, nomeLoja, metas }: { loja: number; nomeLoja: string; metas: Metas }) {
   const { categorias, lojaCategoria } = DADOS;
   const linhas = [...categorias]
     .map((c) => {
@@ -250,8 +257,8 @@ function TabelaCategorias({ loja, nomeLoja }: { loja: number; nomeLoja: string }
                   </div>
                 </td>
                 <td className="px-2 py-2 text-right text-foreground">{pct(l.margemReal)}</td>
-                <td className={cn("px-2 py-2 text-right", cor(l.perda, l.perdaRef, METAS.perda_pct))}>{pct(l.perda, 2)}</td>
-                <td className={cn("px-2 py-2 text-right", cor(l.ruptura, l.rupturaRef, METAS.ruptura_pct))}>{pct(l.ruptura, 2)}</td>
+                <td className={cn("px-2 py-2 text-right", cor(l.perda, l.perdaRef, metas.perda_pct))}>{pct(l.perda, 2)}</td>
+                <td className={cn("px-2 py-2 text-right", cor(l.ruptura, l.rupturaRef, metas.ruptura_pct))}>{pct(l.ruptura, 2)}</td>
                 <td className="px-2 py-2 text-right text-foreground">{dec(l.giro, 0)}×</td>
                 <td className="px-2 py-2 text-right text-foreground">{dec(l.cobertura, 1)} d</td>
                 <td className="py-1 text-right">
@@ -266,68 +273,112 @@ function TabelaCategorias({ loja, nomeLoja }: { loja: number; nomeLoja: string }
   );
 }
 
-function Sinais() {
+function CartaoSinal({ i, aberto, alternar }: { i: Insight; aberto: boolean; alternar: () => void }) {
   const ai = useAi();
-  const [abertos, setAbertos] = useState<Record<string, boolean>>({});
-  const ordenados = [...INSIGHTS].sort((a, b) => (b.reais ?? -1) - (a.reais ?? -1));
   return (
-    <Panel title="Sinais para agir" className="xl:col-span-5" summary="ordenados por dinheiro em risco (rede toda)">
-      <ul className="space-y-2.5">
-        {ordenados.map((i) => {
-          const aberto = !!abertos[i.id];
-          return (
-            <li key={i.id} className="overflow-hidden rounded-lg border bg-background/40">
-              <div className="flex">
-                <span className={cn("w-1.5 shrink-0", COR_SEV[i.tom])} aria-hidden />
-                <div className="min-w-0 flex-1 p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] font-semibold leading-snug text-foreground">{i.titulo}</p>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-                        <span className="font-semibold">{ROT_SEV[i.tom]}</span>
-                        <span>Responsável: {i.dono}</span>
-                      </p>
-                    </div>
-                    {i.reais !== null && (
-                      <div className="shrink-0 text-right">
-                        <p className="font-display text-[19px] font-semibold leading-none text-foreground">{brlCompact(i.reais)}</p>
-                        <p className="mt-1 max-w-[9.5rem] text-[10px] leading-tight text-muted-foreground">{i.reaisRot}</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 flex items-center gap-1">
-                    {i.itens && i.itens.length > 0 && (
-                      <button type="button" onClick={() => setAbertos((a) => ({ ...a, [i.id]: !aberto }))} aria-expanded={aberto} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-primary hover:bg-primary/8">
-                        {aberto ? "Ocultar itens" : "Ver itens"}
-                        <ChevronDown className={cn("size-3.5 transition-transform", aberto && "rotate-180")} aria-hidden />
-                      </button>
-                    )}
-                    <Link to="/" search={{ view: i.view }} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">
-                      Abrir tela <ArrowRight className="size-3" aria-hidden />
-                    </Link>
-                    <span className="ml-auto">
-                      <button type="button" onClick={() => ai.perguntar(perguntaDoInsight(i))} className="rounded-md px-1.5 py-1 text-[12px] font-medium text-brand hover:bg-brand/10">
-                        Perguntar ✦
-                      </button>
-                    </span>
-                  </div>
-                  {aberto && i.itens && (
-                    <ul className="mt-2 divide-y rounded-md border bg-card text-[12px]">
-                      {i.itens.map((it) => (
-                        <li key={it.nome} className="flex justify-between gap-3 px-2.5 py-1.5">
-                          <span className="min-w-0 truncate text-foreground">{it.nome}</span>
-                          <span className="shrink-0 tabular-nums text-muted-foreground">{it.valor}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+    <li className="overflow-hidden rounded-lg border bg-background/40">
+      <div className="flex">
+        <span className={cn("w-1.5 shrink-0", COR_SEV[i.tom])} aria-hidden />
+        <div className="min-w-0 flex-1 p-3">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-semibold leading-snug text-foreground">{i.titulo}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                <span className="font-semibold">{ROT_SEV[i.tom]}</span>
+                <span>Responsável: {i.dono}</span>
+              </p>
+            </div>
+            {i.reais !== null && (
+              <div className="shrink-0 text-right">
+                <p className="font-display text-[19px] font-semibold leading-none text-foreground">{brlCompact(i.reais)}</p>
+                <p className="mt-1 max-w-[11rem] text-[10px] leading-tight text-muted-foreground">{i.reaisRot}</p>
               </div>
-            </li>
-          );
-        })}
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-1">
+            {i.itens && i.itens.length > 0 && (
+              <button type="button" onClick={alternar} aria-expanded={aberto} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-primary hover:bg-primary/8">
+                {aberto ? "Ocultar itens" : "Ver itens"}
+                <ChevronDown className={cn("size-3.5 transition-transform", aberto && "rotate-180")} aria-hidden />
+              </button>
+            )}
+            <Link to="/" search={{ view: i.view }} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">
+              Abrir tela <ArrowRight className="size-3" aria-hidden />
+            </Link>
+            <span className="ml-auto">
+              <button type="button" onClick={() => ai.perguntar(perguntaDoInsight(i))} className="rounded-md px-1.5 py-1 text-[12px] font-medium text-brand hover:bg-brand/10">
+                Perguntar ✦
+              </button>
+            </span>
+          </div>
+          {aberto && i.itens && (
+            <ul className="mt-2 divide-y rounded-md border bg-card text-[12px]">
+              {i.itens.map((it) => (
+                <li key={it.nome} className="flex justify-between gap-3 px-2.5 py-1.5">
+                  <span className="min-w-0 truncate text-foreground">{it.nome}</span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{it.valor}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function Sinais() {
+  const [abertos, setAbertos] = useState<Record<string, boolean>>({});
+  const alt = (id: string) => () => setAbertos((a) => ({ ...a, [id]: !a[id] }));
+  const recuperaveis = INSIGHTS.filter((i) => i.base === "recuperavel").sort((a, b) => (b.reais ?? -1) - (a.reais ?? -1));
+  const contexto = INSIGHTS.filter((i) => i.base === "contexto");
+  return (
+    <Panel
+      title="Sinais para agir"
+      className="xl:col-span-5"
+      summary="ordenados por ganho anual recuperável"
+      info="Mesma régua em todos os sinais: quanto se ganha por ano se a diferença for fechada ou a premissa indicada em cada linha for atingida. Os sinais se sobrepõem (por exemplo, perecíveis e a perda de uma loja), então não some os valores. Abaixo, o que fica fora da ordenação por ter outra natureza."
+    >
+      <ul className="space-y-2.5">
+        {recuperaveis.map((i) => (
+          <CartaoSinal key={i.id} i={i} aberto={!!abertos[i.id]} alternar={alt(i.id)} />
+        ))}
       </ul>
+      {contexto.length > 0 && (
+        <>
+          <p className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contexto, fora da ordenação (outra base de valor)</p>
+          <ul className="space-y-2.5">
+            {contexto.map((i) => (
+              <CartaoSinal key={i.id} i={i} aberto={!!abertos[i.id]} alternar={alt(i.id)} />
+            ))}
+          </ul>
+        </>
+      )}
     </Panel>
+  );
+}
+
+function MetasEditor({ metas, setMetas }: { metas: Metas; setMetas: (m: Metas) => void }) {
+  const chaves = Object.keys(METAS) as ChaveMeta[];
+  return (
+    <details className="dash-card px-4 py-2.5">
+      <summary className="cursor-pointer text-[12.5px] font-medium text-foreground">
+        Metas usadas nos indicadores <span className="font-normal text-muted-foreground">· definidas pelo autor para esta demonstração, sem benchmark de mercado. Edite para a realidade do cliente.</span>
+      </summary>
+      <div className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2 xl:grid-cols-5">
+        {chaves.map((k) => (
+          <label key={k} className="flex items-center justify-between gap-2 text-[12px]">
+            <span className="text-muted-foreground">{ROTULO_META[k]}</span>
+            <span className="flex items-center gap-1">
+              <input type="number" step={0.1} min={0} max={100} value={metas[k]} onChange={(e) => setMetas({ ...metas, [k]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} className="w-16 rounded-md border bg-background px-1.5 py-1 text-right tabular-nums" />%
+            </span>
+          </label>
+        ))}
+      </div>
+      <button type="button" onClick={() => setMetas({ ...METAS })} className="mt-2 text-[11.5px] font-medium text-primary hover:underline">
+        Voltar às metas de exemplo
+      </button>
+    </details>
   );
 }
 

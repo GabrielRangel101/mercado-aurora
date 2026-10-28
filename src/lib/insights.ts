@@ -11,6 +11,11 @@ export interface Insight {
   titulo: string;
   texto: string;
   view: ViewId;
+  /**
+   * "recuperavel": ganho anual que se obtém agindo, na mesma régua para todos os sinais (ordena a lista).
+   * "contexto": número de outra natureza (perda total, gap estrutural, risco de um dia), mostrado à parte e nunca ordenado junto.
+   */
+  base: "recuperavel" | "contexto";
   /** valor em R$ associado ao sinal; null quando não há leitura financeira */
   reais: number | null;
   /** o que o valor representa */
@@ -98,6 +103,30 @@ export function ganhoSimulado(d: Dados, recuperarPct: number, reduzirPerdaPct: n
   return { vendaRecuperada, margemRecuperada, perdaEvitada, total, ppMargem: (100 * total) / r.receita };
 }
 
+/** Premissas do simulador usadas também para dimensionar o que é "recuperável" nos sinais. */
+export const RECUPERAR_PADRAO = 30;
+export const REDUZIR_PADRAO = 20;
+
+/** Saldo anual dos reforços de caixa que compensam (margem da venda que não desiste − custo do operador), nas premissas do gerador. */
+export function saldoCaixas(d: Dados): number {
+  const pr = d.caixasPremissas;
+  const grupos = new Map<string, { loja: number; fila: number; horas: number }>();
+  for (const h of d.horario) {
+    if (h.falta < 1) continue;
+    const k = `${h.loja_id}-${h.dia}`;
+    const g = grupos.get(k) ?? { loja: h.loja_id, fila: 0, horas: 0 };
+    g.fila += h.cupons_em_fila;
+    g.horas += h.falta;
+    grupos.set(k, g);
+  }
+  let total = 0;
+  for (const g of grupos.values()) {
+    const ganho = g.fila * (pr.desistencia_fila_pct / 100) * pr.ticket_por_loja[String(g.loja)] * (pr.margem_bruta_por_loja[String(g.loja)] / 100);
+    total += Math.max(0, ganho - g.horas * pr.custo_operador_hora) * 52;
+  }
+  return total;
+}
+
 export function gerarInsights(d: Dados): Insight[] {
   const out: Insight[] = [];
   const lojaNome = (id: number) => lojaCurta(d.lojas.find((l) => l.loja_id === id)?.nome ?? `Loja ${id}`);
@@ -113,8 +142,9 @@ export function gerarInsights(d: Dados): Insight[] {
       titulo: `${n} SKUs concentram ${pct(topo.pct_acum, 0)} da venda perdida`,
       texto: `O maior é ${primeiro.nome}, com ${brlCompact(primeiro.venda_perdida)} (${pct(primeiro.pct_do_total)} do total), seguido de ${d.rupturaSkus[1]?.nome ?? "—"} e ${d.rupturaSkus[2]?.nome ?? "—"}. Uma lista curta de itens concentra boa parte da ruptura.`,
       view: "ruptura",
-      reais: (d.rupturaSkus.slice(0, n).reduce((a, x) => a + x.venda_perdida, 0) * d.meta.resumo.margem_bruta_pct) / 100,
-      reaisRot: "margem em risco por ano",
+      base: "recuperavel",
+      reais: (d.rupturaSkus.slice(0, n).reduce((a, x) => a + x.venda_perdida, 0) * d.meta.resumo.margem_bruta_pct * RECUPERAR_PADRAO) / 10000,
+      reaisRot: `margem por ano se recuperar ${RECUPERAR_PADRAO}% dessa venda perdida`,
       dono: "Compras e abastecimento",
       itens: d.rupturaSkus.slice(0, 6).map((x) => ({ nome: x.nome, valor: brlCompact(x.venda_perdida) })),
     });
@@ -137,8 +167,9 @@ export function gerarInsights(d: Dados): Insight[] {
         : `${lojaCurta(maiorPerda.nome)} tem a maior perda da rede`,
       texto: `Perda de ${pct(maiorPerda.perda_pct_receita)} da receita (demais lojas: ${pct(media(outras.map((l) => l.perda_pct_receita)))}); ruptura de ${pct(maiorPerda.taxa_ruptura_pct)} contra ${pct(rupturaOutras)}.${hfLoja ? ` Só em hortifruti a perda é ${pct(hfLoja.perda_pct_receita)} da receita, contra ${pct(hfOutras)} nas outras.` : ""}`,
       view: "perdas",
+      base: "recuperavel",
       reais: ((maiorPerda.perda_pct_receita - media(outras.map((l) => l.perda_pct_receita))) / 100) * maiorPerda.receita,
-      reaisRot: "perda acima das outras lojas, por ano",
+      reaisRot: "por ano se a perda cair ao nível das outras lojas",
       dono: `Gerente ${lojaCurta(maiorPerda.nome)} e compras`,
       itens: d.categorias
         .filter((c) => c.perecivel)
@@ -160,11 +191,12 @@ export function gerarInsights(d: Dados): Insight[] {
       titulo: `${t.skus} itens de tráfego: ${pct(t.receitaPct, 0)} da receita, ${pct(t.margemRealPct, 0)} da margem`,
       texto: `SKUs classe A com margem real abaixo de ${LIMITE_TRAFEGO}% rendem ${pct(t.margemMediaPct)} em média. Os mais apertados: ${apertados.map((s) => `${s.nome} (${pct(s.margem_real_pct)})`).join(", ")}.`,
       view: "margem",
+      base: "contexto",
       reais: (() => {
         const grupo = d.curvaAbc.filter((s) => s.classe === "A" && s.margem_real_pct < LIMITE_TRAFEGO);
         return grupo.reduce((a, s) => a + (s.receita * (d.meta.resumo.margem_real_pct - s.margem_real_pct)) / 100, 0);
       })(),
-      reaisRot: "margem abaixo da média da rede, por ano",
+      reaisRot: "margem abaixo da média da rede, por ano: gap estrutural, ovo e leite não saem daí",
       dono: "Comercial (preço e mix)",
       itens: apertados.map((s) => ({ nome: s.nome, valor: `${pct(s.margem_real_pct)} de margem real` })),
     });
@@ -181,8 +213,9 @@ export function gerarInsights(d: Dados): Insight[] {
       titulo: `${lojaCurta(maiorVp.nome)} perde mais venda por falta de produto`,
       texto: `Venda perdida de ${pct(maiorVp.venda_perdida_pct_receita, 2)} da receita (demais: ${pct(media(outras.map((l) => l.venda_perdida_pct_receita)), 2)}).${dias[0] ? ` O pior dia é ${diaLongo(dias[0].dia)}, com ${pct(dias[0].taxa_ruptura_pct)} de ruptura.` : ""}`,
       view: "ruptura",
+      base: "recuperavel",
       reais: (((maiorVp.venda_perdida_pct_receita - media(outras.map((l) => l.venda_perdida_pct_receita))) / 100) * maiorVp.receita * d.meta.resumo.margem_bruta_pct) / 100,
-      reaisRot: "margem em risco acima das outras lojas, por ano",
+      reaisRot: "por ano se a venda perdida cair ao nível das outras lojas",
       dono: `Gerente ${lojaCurta(maiorVp.nome)}`,
       itens: dias.slice(0, 3).map((x) => ({ nome: cap1(diaLongo(x.dia)), valor: `${pct(x.taxa_ruptura_pct)} de ruptura` })),
     });
@@ -200,41 +233,70 @@ export function gerarInsights(d: Dados): Insight[] {
       titulo: `Perecíveis perdem ${pct(pc(per))} da receita; o resto, ${pct(pc(nao))}`,
       texto: `${pior.categoria} cai de ${pct(pior.margem_bruta_pct)} de margem bruta para ${pct(pior.margem_real_pct)} depois da perda (${pp(pior.margem_real_pct - pior.margem_bruta_pct)}).`,
       view: "perdas",
-      reais: per.reduce((a, c) => a + (c.perda_pct_receita * c.receita) / 100, 0),
-      reaisRot: "perda a custo nos perecíveis, por ano",
+      base: "recuperavel",
+      reais: (per.reduce((a, c) => a + (c.perda_pct_receita * c.receita) / 100, 0) * REDUZIR_PADRAO) / 100,
+      reaisRot: `por ano se reduzir ${REDUZIR_PADRAO}% da perda dos perecíveis (perda total: ${brlCompact(per.reduce((a, c) => a + (c.perda_pct_receita * c.receita) / 100, 0))})`,
       dono: "Gerente de perecíveis",
       itens: [...per].sort((a, b) => b.perda_pct_receita - a.perda_pct_receita).slice(0, 4).map((c) => ({ nome: c.categoria, valor: `${pct(c.perda_pct_receita)} da receita` })),
     });
   }
 
+  // 5b. Loja com a menor margem real
+  const piorMargem = [...d.lojas].sort((a, b) => a.margem_real_pct - b.margem_real_pct)[0];
+  if (piorMargem) {
+    const rede = d.meta.resumo;
+    const gapBruta = piorMargem.margem_bruta_pct - rede.margem_bruta_pct;
+    const gapPerda = rede.perda_pct_receita - piorMargem.perda_pct_receita;
+    const principal = Math.abs(gapBruta) >= Math.abs(gapPerda) ? "margem bruta (preço, custo e mix)" : "perda";
+    out.push({
+      id: "loja-margem",
+      tom: "atencao",
+      titulo: `${lojaCurta(piorMargem.nome)} tem a menor margem real da rede: ${pct(piorMargem.margem_real_pct)}`,
+      texto: `${pp(piorMargem.margem_real_pct - rede.margem_real_pct, 2)} contra a rede (${pct(rede.margem_real_pct)}). A margem bruta da loja é ${pct(piorMargem.margem_bruta_pct)} (rede: ${pct(rede.margem_bruta_pct)}, ${pp(gapBruta, 2)}) e a perda ${pct(piorMargem.perda_pct_receita, 2)} (rede: ${pct(rede.perda_pct_receita, 2)}). O maior peso vem de ${principal}.`,
+      view: "lojas",
+      base: "recuperavel",
+      reais: Math.max(0, ((rede.margem_real_pct - piorMargem.margem_real_pct) / 100) * piorMargem.receita),
+      reaisRot: "por ano se a margem real chegar à média da rede",
+      dono: `Gerente ${lojaCurta(piorMargem.nome)} e comercial`,
+      itens: [...d.categorias]
+        .map((c) => ({ c, l: d.lojaCategoria.find((x) => x.loja_id === piorMargem.loja_id && x.categoria === c.categoria) }))
+        .filter((x) => x.l)
+        .sort((a, b) => (a.l!.margem_real_pct - a.c.margem_real_pct) - (b.l!.margem_real_pct - b.c.margem_real_pct))
+        .slice(0, 4)
+        .map((x) => ({ nome: x.c.categoria, valor: `${pct(x.l!.margem_real_pct)} contra ${pct(x.c.margem_real_pct)} na rede` })),
+    });
+  }
+
   // 6. Caixas
-  const gaps = d.horario.filter((h) => h.gap >= 1);
+  const gaps = d.horario.filter((h) => h.falta >= 1);
   if (gaps.length) {
     const dias = Array.from(new Set(gaps.map((g) => diaLongo(g.dia))));
-    const pior = [...gaps].sort((a, b) => b.gap - a.gap)[0];
+    const pior = [...gaps].sort((a, b) => b.falta - a.falta)[0];
     out.push({
       id: "caixas",
       tom: "info",
       titulo: `${gaps.length} faixas de hora com falta de caixa${dias.length <= 2 ? `, só em ${dias.join(" e ")}` : ""}`,
-      texto: `O pior caso é ${lojaNome(pior.loja_id)} ${emDia(pior.dia)} às ${pior.hora}h: ${pior.caixas_necessarios} caixas necessários e ${pior.caixas_escalados} escalados.`,
+      texto: `O pior caso é ${lojaNome(pior.loja_id)} ${emDia(pior.dia)} às ${pior.hora}h: ${pior.caixas_necessarios} caixas necessários e ${pior.caixas_escalados} escalados (falta ${pior.falta}). ${saldoCaixas(d) > 0 ? "Em parte das faixas o reforço paga o operador." : `Com ${d.caixasPremissas.desistencia_fila_pct}% de desistência na fila, a margem da venda salva não paga o operador extra em nenhuma faixa: manter a escala.`}`,
       view: "lojas",
-      reais: null,
-      reaisRot: "",
+      base: saldoCaixas(d) > 0 ? "recuperavel" : "contexto",
+      reais: saldoCaixas(d) > 0 ? saldoCaixas(d) : null,
+      reaisRot: saldoCaixas(d) > 0 ? "por ano nas faixas em que o reforço compensa (margem da venda − custo do operador)" : "",
       dono: "Gerente de operações",
-      itens: [...gaps].sort((a, b) => b.gap - a.gap).slice(0, 3).map((g) => ({ nome: `${lojaNome(g.loja_id)} · ${diaLongo(g.dia)} ${g.hora}h`, valor: `faltam ${g.gap} caixa${g.gap > 1 ? "s" : ""}` })),
+      itens: [...gaps].sort((a, b) => b.falta - a.falta).slice(0, 3).map((g) => ({ nome: `${lojaNome(g.loja_id)} · ${diaLongo(g.dia)} ${g.hora}h`, valor: `falta ${g.falta} caixa${g.falta > 1 ? "s" : ""}` })),
     });
   }
 
   // 7. Alertas
-  const r1 = d.alertas.contagem_por_loja_regra.filter((c) => c.regra === "R1").reduce((a, c) => a + c.n, 0);
+  const urg = d.alertas.contagem_por_loja_regra.filter((c) => c.regra === "R0" || c.regra === "R1").reduce((a, c) => a + c.n, 0);
   out.push({
     id: "alertas",
     tom: "info",
     titulo: `${int(d.alertas.total_eventos)} alertas no estoque de fechamento`,
-    texto: `${int(r1)} são de ruptura iminente em item classe A. É o que a automação enviaria ao gerente na manhã seguinte.`,
+    texto: `${int(urg)} pedem ação hoje (sem estoque ou ruptura iminente em item de maior giro). É o que a automação enviaria ao gerente na manhã seguinte, em até ${d.alertas.max_itens_mensagem} itens por loja.`,
     view: "alertas",
-    reais: d.alertas.eventos_destaque.reduce((acc, e) => acc + e.impacto_rs, 0),
-    reaisRot: "em risco no estoque de hoje (destaques)",
+    base: "contexto",
+    reais: d.alertas.risco_total_rs,
+    reaisRot: "em risco só no estoque de um dia (não é valor anual)",
     dono: "Compras e gerentes de loja",
     itens: [...d.alertas.eventos_destaque].sort((x, y) => y.impacto_rs - x.impacto_rs).slice(0, 4).map((e) => ({ nome: `${e.produto} · ${lojaNome(e.loja_id)}`, valor: brlCompact(e.impacto_rs) })),
   });

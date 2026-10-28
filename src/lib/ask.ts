@@ -694,7 +694,7 @@ function detectarTopico(t: string, c: Consulta): Topico {
   if (tem(t, /\bpor ?que\b|o que explica|qual (a )?causa|\bcausas?\b|o que (esta )?(puxando|derrubando|causando)|\bmotivo d[ao]\b/) && c.medida && ["perda", "perda_valor", "margem_real", "margem_bruta", "ruptura", "venda_perdida"].includes(c.medida)) return "porque";
   if (tem(t, /o que (e|significa|quer dizer)|como (e )?(calcul|medi)|defini|formula|explica (a |o )?(metrica|margem|ruptura|lift|curva)/)) return "definicao";
   if (tem(t, /simul|e se |se eu |se a gente|se reduzir|se recuper|quanto (vale|ganho|ganhar|economiz)|reduzir (a )?perda|recuperar/) && tem(t, /\d+\s*%|perda|ruptura|venda perdida|margem/)) return "simulacao";
-  if (tem(t, /\balert|\br[1-4]\b|mensagem (ao|para o) gerente|whatsapp|vence em|vencimento proximo/)) return "alertas";
+  if (tem(t, /\balert|\br[0-4]\b|mensagem (ao|para o) gerente|whatsapp|vence em|vencimento proximo/)) return "alertas";
   if (tem(t, /\bcesta|junto com|comprados juntos|saem juntos|cross.?sell|combina|afinidade|\blift\b|missao de compra|missoes|\bpares?\b/)) return "cesta";
   if (tem(t, /\bcaixas?\b|\bfila\b|pico de (movimento|horario)|escala|\bhora\b|\bhorario/) && !tem(t, /dados|ticket/)) return "caixas";
   if (tem(t, /quantos (skus|produtos|itens)|quantas (lojas|categorias|marcas)|quantos meses|quantos dias|qual o periodo|periodo (dos|do) dado/)) return "contagem";
@@ -1064,7 +1064,7 @@ function responderResumo(pergunta: string, d: Dados): Resposta {
 }
 
 function responderAlertas(pergunta: string, t: string, c: Consulta, d: Dados): Resposta {
-  const regra = [...t.matchAll(/\br([1-4])\b/g)].map((m) => `R${m[1]}`);
+  const regra = [...t.matchAll(/\br([0-4])\b/g)].map((m) => `R${m[1]}`);
   if (tem(t, /vencimento|vence/)) regra.push("R3");
   const lista = d.alertas.eventos_destaque
     .filter((e) => (!c.filtros.loja?.length || c.filtros.loja.includes(e.loja_id)) && (!c.filtros.categoria?.length || c.filtros.categoria.includes(e.categoria)) && (!regra.length || regra.includes(e.regra)))
@@ -1158,8 +1158,8 @@ function responderCaixas(pergunta: string, c: Consulta, d: Dados): Resposta {
   return {
     pergunta,
     titulo: "Falta de caixa por faixa de hora",
-    texto: `${faltas.length} faixas com falta de caixa. O pior caso é ${lojaN(faltas[0].loja_id)} ${diaLongo(faltas[0].dia)} às ${faltas[0].hora}h: ${faltas[0].caixas_necessarios} caixas necessários, ${faltas[0].caixas_escalados} escalados (falta ${faltas[0].falta}). Nas ${faltas.length} faixas, a venda em risco por fila é de ${brlCompact(faltas.reduce((a, h) => a + h.venda_em_risco_hora, 0) * 52)} por ano contra ${brlCompact(faltas.reduce((a, h) => a + h.custo_reforco_hora, 0) * 52)} para pagar o reforço (premissa: ${d.caixasPremissas.desistencia_fila_pct}% dos cupons acima da capacidade desistem; operador a R$ ${d.caixasPremissas.custo_operador_hora}/h). O pico de movimento no recorte é ${lojaN(pico.loja_id)} ${diaLongo(pico.dia)} às ${pico.hora}h (${dec(pico.cupons_medios, 0)} cupons/hora). Há ${int(sobras)} faixas com 2 ou mais caixas sobrando.`,
-    blocos: [{ tipo: "tabela", colunas: ["Loja", "Dia", "Hora", "Falta", "Venda em risco/dia", "Reforço/dia", "Decisão"], linhas: faltas.slice(0, 8).map((h) => [lojaN(h.loja_id), cap(diaLongo(h.dia)), `${h.hora}h`, `${h.falta} caixa${h.falta > 1 ? "s" : ""}`, brlCompact(h.venda_em_risco_hora), brlCompact(h.custo_reforco_hora), h.decisao]) }],
+    texto: `${faltas.length} faixas com falta de caixa. O pior caso é ${lojaN(faltas[0].loja_id)} ${diaLongo(faltas[0].dia)} às ${faltas[0].hora}h: ${faltas[0].caixas_necessarios} caixas necessários, ${faltas[0].caixas_escalados} escalados (falta ${faltas[0].falta}). Nas ${faltas.length} faixas, a venda em risco por fila é de ${brlCompact(faltas.reduce((a, h) => a + h.venda_em_risco_hora, 0) * 52)} por ano, mas o que sobra de verdade é a margem dessa venda, ${brlCompact(faltas.reduce((a, h) => a + h.margem_em_risco_hora, 0) * 52)}, contra ${brlCompact(faltas.reduce((a, h) => a + h.custo_reforco_hora, 0) * 52)} para pagar o reforço (premissas: ${d.caixasPremissas.desistencia_fila_pct}% dos cupons acima da capacidade desistem; operador a R$ ${d.caixasPremissas.custo_operador_hora}/h; a decisão é por margem, não por venda). O pico de movimento no recorte é ${lojaN(pico.loja_id)} ${diaLongo(pico.dia)} às ${pico.hora}h (${dec(pico.cupons_medios, 0)} cupons/hora). Há ${int(sobras)} faixas com 2 ou mais caixas sobrando.`,
+    blocos: [{ tipo: "tabela", colunas: ["Loja", "Dia", "Hora", "Falta", "Margem em risco/dia", "Reforço/dia", "Decisão"], linhas: faltas.slice(0, 8).map((h) => [lojaN(h.loja_id), cap(diaLongo(h.dia)), `${h.hora}h`, `${h.falta} caixa${h.falta > 1 ? "s" : ""}`, brlCompact(h.margem_em_risco_hora), brlCompact(h.custo_reforco_hora), h.decisao]) }],
     seguintes: ["Qual o horário de pico no Centro?", "Falta caixa no sábado?", "Ticket médio por loja"],
     cobertura: "ok",
     fonte: "Fonte: cupons médios por hora e escala de caixas",

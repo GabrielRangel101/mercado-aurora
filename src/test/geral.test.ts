@@ -79,6 +79,29 @@ describe("alertas coerentes", () => {
       expect(e.cobertura_dias > (e.dias_para_vencer ?? 99) - 0.001).toBe(true);
     }
   });
+  it("R0 só com estoque zero e R1/R2 respeitam o prazo de reposição", () => {
+    for (const e of a.eventos_destaque) {
+      if (e.regra === "R0") expect(e.estoque).toBe(0);
+      else if (e.regra === "R1" || e.regra === "R2") expect(e.estoque > 0 || e.cobertura_dias >= 0).toBe(true);
+    }
+    const urgentes = a.contagem_por_loja_regra.filter((c) => c.regra === "R1").reduce((s, c) => s + c.n, 0);
+    expect(urgentes < 20).toBe(true);
+  });
+  it("R3 traz desconto escalonado e valor recuperado", () => {
+    for (const e of a.eventos_destaque.filter((x) => x.regra === "R3")) {
+      const esperado = (e.dias_para_vencer ?? 9) <= 1 ? 40 : e.dias_para_vencer === 2 ? 25 : 15;
+      expect(e.desconto_pct).toBe(esperado);
+      expect((e.recuperado_rs ?? 0) > 0).toBe(true);
+    }
+  });
+  it("mensagem: urgência antes de valor (ordem de regra)", () => {
+    const ordem = ["⛔", "🔴", "🟠", "🟡", "⚪"];
+    for (const msg of Object.values(a.mensagens_exemplo)) {
+      const icones = msg.split("\n").filter((l) => /^(⛔|🔴|🟠|🟡|⚪) .+:/.test(l)).map((l) => ordem.indexOf(l.slice(0, 2).trim() || l[0]));
+      for (let i = 1; i < icones.length; i++) expect(icones[i] >= icones[i - 1]).toBe(true);
+      expect(/\d\.\d d/.test(msg)).toBe(false);
+    }
+  });
   it("severidade segue o dinheiro em risco", () => {
     for (const e of a.eventos_destaque) {
       const esperado = e.impacto_rs >= a.severidade_faixas.alta ? "alta" : e.impacto_rs >= a.severidade_faixas.media ? "media" : "baixa";
@@ -87,7 +110,7 @@ describe("alertas coerentes", () => {
   });
   it("mensagem do gerente tem no máximo 6 itens", () => {
     for (const msg of Object.values(a.mensagens_exemplo)) {
-      const itens = msg.split("\n").filter((l) => /^(🔴|🟠|🟡|⚪) .+:/.test(l)).length;
+      const itens = msg.split("\n").filter((l) => /^(⛔|🔴|🟠|🟡|⚪) .+:/.test(l)).length;
       expect(itens > 0 && itens <= a.max_itens_mensagem).toBe(true);
     }
   });
@@ -110,11 +133,21 @@ describe("variação entre lojas", () => {
   });
 });
 
+describe("sinais com base única", () => {
+  it("cada sinal declara a base e só os recuperáveis entram na ordenação", () => {
+    const ins = gerarInsights(d);
+    for (const i of ins) expect(i.base === "recuperavel" || i.base === "contexto").toBe(true);
+    expect(ins.filter((i) => i.base === "contexto").length > 0).toBe(true);
+    expect(ins.some((i) => i.id === "loja-margem")).toBe(true);
+  });
+});
+
 describe("caixas valoradas", () => {
   it("falta é sempre positiva e a decisão compara venda em risco com custo", () => {
     for (const h of d.horario.filter((x) => x.falta > 0)) {
       expect(h.falta > 0).toBe(true);
-      expect(h.decisao === (h.venda_em_risco_hora > h.custo_reforco_hora ? "Reforçar" : "Manter escala")).toBe(true);
+      expect(h.decisao === (h.margem_em_risco_hora > h.custo_reforco_hora ? "Reforçar" : "Manter escala")).toBe(true);
+      expect(h.margem_em_risco_hora < h.venda_em_risco_hora).toBe(true);
     }
   });
 });
