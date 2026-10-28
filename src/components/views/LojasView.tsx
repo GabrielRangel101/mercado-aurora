@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
-import { ChartBox, ChartTip, COR, EIXO, HeatGrid, Kpi, Panel, Segmented, useLazy, type HeatCell, KpiStrip } from "@/components/aurora/kit";
+import { Carga, ChartBox, ChartTip, COR, EIXO, HeatGrid, Kpi, Panel, Segmented, useLazyEstado, type HeatCell, KpiStrip } from "@/components/aurora/kit";
 import { DADOS, LOJAS_CURTAS, loadVendasDiarias } from "@/lib/aurora-data";
 import { brl, brlCompact, dec, int, pct } from "@/lib/format";
 
@@ -15,7 +15,7 @@ const FAIXAS = [
 
 export function LojasView() {
   const { lojas, horario } = DADOS;
-  const diario = useLazy(loadVendasDiarias);
+  const { data: diario, erro: erroDiario, recarregar } = useLazyEstado(loadVendasDiarias);
   const maiorReceita = [...lojas].sort((a, b) => b.receita - a.receita)[0];
   const melhorMargem = [...lojas].sort((a, b) => b.margem_real_pct - a.margem_real_pct)[0];
   const maiorPerda = [...lojas].sort((a, b) => b.perda_pct_receita - a.perda_pct_receita)[0];
@@ -58,9 +58,9 @@ export function LojasView() {
     const cells: HeatCell[] = DIAS.map((dia) => {
       const h = horario.find((x) => x.loja_id === Number(lojaSel) && x.dia === dia && x.hora === hora);
       if (!h) return { texto: "" };
-      const t = h.gap >= 2 ? 0 : h.gap === 1 ? 0.2 : 0.85;
+      const t = h.falta >= 2 ? 0 : h.falta === 1 ? 0.2 : 0.85;
       return {
-        texto: h.gap >= 1 ? `−${h.gap}` : `${h.caixas_escalados}`,
+        texto: h.falta >= 1 ? `falta ${h.falta}` : `${h.caixas_escalados}`,
         t: h.cupons_medios < 8 ? undefined : t,
         dica: `${h.dia} ${hora}h · ${dec(h.cupons_medios, 0)} cupons/h · ${h.caixas_necessarios} caixas necessários, ${h.caixas_escalados} escalados`,
       };
@@ -68,7 +68,7 @@ export function LojasView() {
     return { label: `${hora}h`, cells };
   });
   const lojaNome = LOJAS_CURTAS[Number(lojaSel) - 1];
-  const faltas = horario.filter((h) => h.loja_id === Number(lojaSel) && h.gap >= 1).length;
+  const faltas = horario.filter((h) => h.loja_id === Number(lojaSel) && h.falta >= 1).length;
 
   return (
     <div className="space-y-4">
@@ -76,7 +76,7 @@ export function LojasView() {
         <Kpi label="Maior receita" valor={maiorReceita.nome.replace("Aurora ", "")} sub={brlCompact(maiorReceita.receita)} ask="Receita por loja" />
         <Kpi label="Melhor margem real" valor={melhorMargem.nome.replace("Aurora ", "")} sub={pct(melhorMargem.margem_real_pct)} tom="bom" ask="Margem real por loja" />
         <Kpi label="Maior perda" valor={maiorPerda.nome.replace("Aurora ", "")} sub={`${pct(maiorPerda.perda_pct_receita, 2)} da receita`} tom="ruim" destaque ask={`Por que a perda do ${maiorPerda.nome.replace("Aurora ", "")} é alta?`} />
-        <Kpi label="Faixas sem caixa suficiente" valor={String(horario.filter((h) => h.gap >= 1).length)} sub="loja × dia × hora com falta" tom="ruim" ask="Onde falta caixa?" />
+        <Kpi label="Faixas sem caixa suficiente" valor={String(horario.filter((h) => h.falta >= 1).length)} sub="loja × dia × hora com falta" tom="ruim" ask="Onde falta caixa?" />
       </KpiStrip>
 
       <Panel ask="Compare Centro e Jardins" title="Comparativo entre lojas" summary="12 meses" info="Verde: melhor da rede no indicador. Vermelho: pior.">
@@ -130,7 +130,7 @@ export function LojasView() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <Carregando />
+              <Carga erro={erroDiario} recarregar={recarregar} />
             )}
           </ChartBox>
         </Panel>
@@ -148,7 +148,7 @@ export function LojasView() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <Carregando />
+              <Carga erro={erroDiario} recarregar={recarregar} />
             )}
           </ChartBox>
         </Panel>
@@ -159,10 +159,12 @@ export function LojasView() {
         title="Caixas por hora"
         summary={faltas ? `${lojaNome}: ${faltas} faixas com falta` : `${lojaNome}: sem falta`}
         actions={<Segmented label="Loja" value={lojaSel} onChange={setLojaSel} options={lojas.map((l, i) => ({ value: String(l.loja_id), label: LOJAS_CURTAS[i] }))} />}
-        info="Cupons por hora × capacidade de um caixa (18 cupons/h a 85% de uso). Número em cada célula: caixas escalados. −1 ou −2: faltam caixas naquela hora. A escala atual é fixa por dia da semana, então não acompanha o pico de fim de semana entre 10h e 13h."
+        info="Cupons por hora × capacidade de um caixa (18 cupons/h a 85% de uso). Número em cada célula: caixas escalados. Onde está escrito falta 2, faltam 2 caixas naquela hora. A escala atual é fixa por dia da semana, então não acompanha o pico de fim de semana entre 10h e 13h."
       >
-        <HeatGrid corner="Hora" cols={DIAS} rows={linhasCaixa} colWidth="3.5rem" />
+        <HeatGrid corner="Hora" cols={DIAS} rows={linhasCaixa} colWidth="4.5rem" />
       </Panel>
+
+      <DecisaoCaixas lojaSel={Number(lojaSel)} />
     </div>
   );
 }
@@ -172,6 +174,68 @@ function Celula({ v, bom, ruim, f, ultima }: { v: number; bom: number; ruim: num
   return <td className={`${ultima ? "pl-2" : "px-2"} py-2 text-right font-medium ${cor}`}>{f(v)}</td>;
 }
 
-function Carregando() {
-  return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Carregando série diária…</div>;
+
+function DecisaoCaixas({ lojaSel }: { lojaSel: number }) {
+  const { horario, caixasPremissas: pr } = DADOS;
+  const SEMANAS = 52;
+  const grupos = new Map<string, { loja: number; dia: string; horas: number[]; faltaMax: number; venda: number; custo: number }>();
+  for (const h of horario) {
+    if (h.falta < 1) continue;
+    const k = `${h.loja_id}-${h.dia}`;
+    const g = grupos.get(k) ?? { loja: h.loja_id, dia: h.dia, horas: [], faltaMax: 0, venda: 0, custo: 0 };
+    g.horas.push(h.hora);
+    g.faltaMax = Math.max(g.faltaMax, h.falta);
+    g.venda += h.venda_em_risco_hora;
+    g.custo += h.custo_reforco_hora;
+    grupos.set(k, g);
+  }
+  const linhas = [...grupos.values()].sort((a, b) => b.venda - b.custo - (a.venda - a.custo));
+  const total = linhas.reduce((a, g) => a + Math.max(0, g.venda - g.custo) * SEMANAS, 0);
+  return (
+    <Panel
+      title="Falta de caixa: vale reforçar a escala?"
+      summary={`saldo de reforço nas faixas críticas: ${brlCompact(total)} por ano`}
+      ask="Onde falta caixa?"
+      info={`Premissas: um caixa atende ${pr.cupons_por_hora_por_caixa} cupons por hora a ${dec(100 * pr.utilizacao_alvo, 0)}% de uso; ${dec(pr.desistencia_fila_pct, 0)}% dos cupons acima dessa capacidade desistem na fila e levam o ticket médio da loja; operador custa ${brl(pr.custo_operador_hora)} por hora com encargos. Saldo = venda em risco − custo do reforço, multiplicado por 52 semanas.`}
+    >
+      <div className="overflow-x-auto scrollbar-thin">
+        <table className="w-full min-w-[34rem] text-xs tabular-nums">
+          <thead>
+            <tr className="text-left text-[11px] text-muted-foreground">
+              <th className="py-1.5 pr-2 font-medium">Loja e dia</th>
+              <th className="px-2 py-1.5 font-medium">Horas</th>
+              <th className="px-2 py-1.5 text-right font-medium">Falta</th>
+              <th className="px-2 py-1.5 text-right font-medium">Venda em risco/dia</th>
+              <th className="px-2 py-1.5 text-right font-medium">Custo do reforço/dia</th>
+              <th className="px-2 py-1.5 text-right font-medium">Saldo/ano</th>
+              <th className="py-1.5 pl-2 font-medium">Decisão</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((g) => {
+              const saldo = (g.venda - g.custo) * SEMANAS;
+              return (
+                <tr key={`${g.loja}-${g.dia}`} className={`border-t ${g.loja === lojaSel ? "bg-primary/5" : ""}`}>
+                  <td className="py-2 pr-2 font-medium text-foreground">
+                    {LOJAS_CURTAS[g.loja - 1]} · {g.dia}
+                  </td>
+                  <td className="px-2 py-2 text-muted-foreground">{g.horas.map((x) => `${x}h`).join(", ")}</td>
+                  <td className="px-2 py-2 text-right text-foreground">
+                    {g.faltaMax} caixa{g.faltaMax > 1 ? "s" : ""}
+                  </td>
+                  <td className="px-2 py-2 text-right text-foreground">{brl(g.venda)}</td>
+                  <td className="px-2 py-2 text-right text-foreground">{brl(g.custo)}</td>
+                  <td className={`px-2 py-2 text-right font-semibold ${saldo >= 0 ? "text-positive" : "text-danger"}`}>
+                    {saldo >= 0 ? "+" : "−"} {brlCompact(Math.abs(saldo))}
+                  </td>
+                  <td className="py-2 pl-2 font-medium text-foreground">{saldo >= 0 ? "Reforçar" : "Manter escala"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {!linhas.length && <p className="py-3 text-xs text-muted-foreground">Nenhuma faixa com falta de caixa.</p>}
+    </Panel>
+  );
 }

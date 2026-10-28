@@ -66,3 +66,14 @@ bun run test
 - Sinais ordenados por dinheiro em risco, com responsável e lista de itens.
 - Simulador com premissas editáveis e ganho líquido (capital parado, vencimento extra, operação, remarcação).
 - Limites: 12 meses de dados (sem comparação com o ano anterior) e sem preço de gôndola (sem elasticidade).
+
+## Revisão do gerente (2ª rodada)
+
+- **Alertas:** um alerta por SKU-loja, com precedência R1 > R3 > R2 > R4. Vencimento só considera o que não vende até a data. Severidade pelo R$ em risco. Mensagem de WhatsApp com no máximo 6 itens, ordenados por valor, e link para o resto. R4 com piso de valor.
+- **Variação entre lojas:** preço, custo e perda variam por loja e categoria (Jardins ainda perde mais nos perecíveis, mas com fator próprio por categoria).
+- **Causa da ruptura:** atraso do fornecedor, pedido subdimensionado e pico de demanda, atribuídos por regra dia a dia (`ruptura_causas.json`). Fornecedor = marca do produto. Não separa gôndola de estoque zero nem mede acuracidade de inventário.
+- **Marca própria contra terceiros** na tela de Margem (`marcas.json`).
+- **Caixas:** "falta N" no lugar de números negativos e decisão de reforço com venda em risco contra custo do operador (premissas em `caixas_premissas.json`).
+- **Cesta:** margem do combo, item de tráfego e recomendação por par; ranking de lift só com suporte de 2% ou mais.
+- **Carga de dados:** gráficos que dependem da série diária tentam 3 vezes e mostram "Tentar de novo" em caso de erro.
+- **Layout:** barra lateral só a partir de 1280 px; abaixo disso, navegação no topo.

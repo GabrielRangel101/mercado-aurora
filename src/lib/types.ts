@@ -174,6 +174,13 @@ export interface PerdaMotivo {
 }
 
 export interface ParCesta {
+  margem_a_pct: number;
+  margem_b_pct: number;
+  margem_combo_pct: number;
+  trafego_a: boolean;
+  trafego_b: boolean;
+  categoria_a: string;
+  categoria_b: string;
   item_a: string;
   item_b: string;
   suporte_pct: number;
@@ -188,7 +195,7 @@ export interface Cesta {
   itens_por_cesta_media: number;
   pares_maior_lift: ParCesta[];
   pares_maior_suporte: ParCesta[];
-  itens_mais_presentes: { item: string; penetracao_pct: number }[];
+  itens_mais_presentes: { item: string; penetracao_pct: number; margem_pct: number; trafego: boolean; categoria: string }[];
   nota: string;
 }
 
@@ -201,6 +208,46 @@ export interface HoraCaixa {
   caixas_necessarios: number;
   caixas_escalados: number;
   gap: number;
+  falta: number;
+  sobra: number;
+  venda_em_risco_hora: number;
+  custo_reforco_hora: number;
+  decisao: "Reforçar" | "Manter escala" | "";
+}
+
+export interface CaixasPremissas {
+  cupons_por_hora_por_caixa: number;
+  utilizacao_alvo: number;
+  desistencia_fila_pct: number;
+  custo_operador_hora: number;
+  ticket_por_loja: Record<string, number>;
+}
+
+export interface RupturaCausas {
+  nota: string;
+  fornecedor_e_marca: string;
+  por_causa: { causa: string; dias: number; venda_perdida: number; pct_venda_perdida: number }[];
+  por_categoria: { categoria: string; causa: string; venda_perdida: number }[];
+  por_loja: { loja_id: number; causa: string; venda_perdida: number }[];
+  fornecedores: { fornecedor: string; pedidos: number; pct_no_prazo: number; atraso_medio_dias: number; venda_perdida_atraso: number }[];
+  lead_time_categoria: { categoria: string; pedidos: number; pct_no_prazo: number; atraso_medio_dias: number; lead_planejado_dias: number }[];
+}
+
+export interface MarcaResumo {
+  marca: string;
+  tipo: "Marca própria" | "Terceiros" | "Sem marca";
+  receita: number;
+  share_receita_pct: number;
+  margem_bruta_pct: number;
+  margem_real_pct: number;
+  perda_pct_receita: number;
+  ruptura_pct: number;
+  venda_perdida: number;
+}
+
+export interface Marcas {
+  marcas: MarcaResumo[];
+  propria_vs_terceiros: { categoria: string; tipo: "Marca própria" | "Terceiros"; receita: number; margem_real_pct: number }[];
 }
 
 export interface RegraAlerta {
@@ -228,11 +275,16 @@ export interface EventoAlerta {
   impacto_rs: number;
   acao: string;
   dias_para_vencer?: number | null;
+  sobra_un?: number | null;
 }
 
 export interface Alertas {
   status: string;
   regras: RegraAlerta[];
+  precedencia: string[];
+  severidade_faixas: { alta: number; media: number };
+  deduplicacao: { sku_loja_com_mais_de_uma_regra: number; alertas_enviados: number; regra: string };
+  max_itens_mensagem: number;
   contagem_por_loja_regra: { loja_id: number; regra: string; n: number }[];
   total_eventos: number;
   eventos_destaque: EventoAlerta[];
@@ -254,4 +306,7 @@ export interface Dados {
   cesta: Cesta;
   horario: HoraCaixa[];
   alertas: Alertas;
+  rupturaCausas: RupturaCausas;
+  marcas: Marcas;
+  caixasPremissas: CaixasPremissas;
 }

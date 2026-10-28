@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { perguntar, type Bloco, type Fontes } from "../lib/ask";
+import { brlCompact } from "../lib/format";
 import { ganhoSimulado } from "../lib/insights";
 import type { Dados } from "../lib/types";
 
@@ -23,6 +24,7 @@ const d = {
   cesta: j("cesta.json"),
   horario: j("horario_caixas.json"),
   alertas: j("alertas.json"),
+  rupturaCausas: j("ruptura_causas.json"), marcas: j("marcas.json"), caixasPremissas: j("caixas_premissas.json"),
 } as unknown as Dados;
 
 const f: Fontes = { d, diarias: j("vendas_diarias_loja.json"), semanais: j("vendas_semanais_categoria_loja.json") };
@@ -33,7 +35,7 @@ describe("Modo IA: números vêm dos dados", () => {
   it("receita total bate com o resumo da rede", () => {
     const r = perguntar("Qual a receita total?", f);
     expect(r.cobertura).toBe("ok");
-    expect(r.texto).toContain("R$ 70,3 mi");
+    expect(r.texto).toContain(brlCompact(d.meta.resumo.receita));
   });
 
   it("ranking por loja traz a loja de maior perda e usa a taxa da tabela", () => {

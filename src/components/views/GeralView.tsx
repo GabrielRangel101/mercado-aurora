@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
 import { useAi } from "@/components/ai/ai-store";
-import { AskButton, ChartBox, ChartTip, COR, EIXO, Kpi, KpiStrip, Panel, Segmented, useLazy, type Delta, type MetaKpi } from "@/components/aurora/kit";
+import { AskButton, ChartBox, ChartTip, COR, EIXO, Kpi, KpiStrip, Panel, Segmented, Carga, useLazyEstado, type Delta, type MetaKpi } from "@/components/aurora/kit";
 import { DADOS, INSIGHTS, LOJAS_CURTAS, loadVendasDiarias } from "@/lib/aurora-data";
 import { brlCompact, dec, mesLabel, pct, pp } from "@/lib/format";
 import { PERIODOS, ponteMargem, resumir, serieMensal, ultimosMeses, type PeriodoId, type ResumoGeral } from "@/lib/geral";
@@ -55,7 +55,7 @@ function perguntaDoInsight(i: Insight): string {
 export function GeralView() {
   const [loja, setLoja] = useState(0);
   const [periodo, setPeriodo] = useState<PeriodoId>("12m");
-  const diarias = useLazy(loadVendasDiarias);
+  const { data: diarias, erro: erroDiarias, recarregar } = useLazyEstado(loadVendasDiarias);
 
   const serie = useMemo(() => serieMensal(DADOS, diarias, loja), [diarias, loja]);
   const serieRede = useMemo(() => serieMensal(DADOS, null, 0), []);
@@ -89,17 +89,17 @@ export function GeralView() {
       <BarraFiltros loja={loja} setLoja={setLoja} periodo={periodo} setPeriodo={setPeriodo} />
 
       {carregando ? (
-        <p className="dash-card p-6 text-sm text-muted-foreground" role="status">
-          Carregando a série diária de {nomeLoja}…
-        </p>
+        <div className="dash-card p-6">
+          <Carga erro={erroDiarias} recarregar={recarregar} texto={`Carregando a série diária de ${nomeLoja}…`} />
+        </div>
       ) : (
         <>
           <KpiStrip>
-            <Kpi label="Receita" valor={brlCompact(res.receita)} delta={loja === 0 && periodo !== "12m" && ref ? delta(res.receita / nMeses, ref.receita / 12, "rel", "alta") : undefined} sub={loja > 0 ? `${pct((100 * res.receita) / resRede.receita, 1)} da rede` : refLabel ? `por mês, ${refLabel}` : `${nomeLoja}`} spark={spark("receita")} info="Receita do período selecionado." ask="Como evoluiu a receita por mês?" />
+            <Kpi label="Receita" valor={brlCompact(res.receita)} delta={loja === 0 && periodo !== "12m" && ref ? delta(res.receita / nMeses, ref.receita / 12, "rel", "alta") : undefined} sub={loja > 0 ? `soma de ${nMeses} ${nMeses > 1 ? "meses" : "mês"} · ${pct((100 * res.receita) / resRede.receita, 1)} da rede` : refLabel ? `soma de ${nMeses} ${nMeses > 1 ? "meses" : "mês"} · mensal ${refLabel}` : `soma de ${nMeses} meses · ${nomeLoja}`} spark={spark("receita")} info="Receita do período selecionado." ask="Como evoluiu a receita por mês?" />
             <Kpi label="Margem bruta" valor={pct(res.margem_bruta_pct)} delta={d((r) => r.margem_bruta_pct, "pp", "alta")} sub={refLabel} spark={spark("margem_bruta")} info="Receita menos custo da mercadoria vendida." ask="Margem bruta por categoria" />
             <Kpi label="Margem real" valor={pct(res.margem_real_pct)} destaque delta={d((r) => r.margem_real_pct, "pp", "alta")} meta={metaKpi("margem_real_pct", res.margem_real_pct)} sub={`${pp(res.margem_real_pct - res.margem_bruta_pct)} pelas perdas`} spark={spark("margem_real")} info="(Receita − CMV − perda a custo) ÷ receita. É a métrica central do painel. Meta de exemplo definida pelo autor." ask="Por que a margem real é menor que a bruta?" />
             <Kpi label="Perdas" valor={pct(res.perda_pct, 2)} tom="ruim" delta={d((r) => r.perda_pct, "pp", "queda")} meta={metaKpi("perda_pct", res.perda_pct)} sub={`${brlCompact(res.perda_custo)} a custo`} spark={spark("perda")} info="Vencimento, avaria, furto e quebra operacional, valorizados a custo." ask="Qual loja tem a maior perda?" />
-            <Kpi label="Ruptura" valor={pct(res.ruptura_pct, 2)} tom="ruim" delta={d((r) => r.ruptura_pct, "pp", "queda")} meta={metaKpi("ruptura_pct", res.ruptura_pct)} sub={loja === 0 && periodo === "12m" ? `Classe A: ${pct(DADOS.meta.resumo.taxa_ruptura_A_pct, 2)} (meta ${pct(METAS.ruptura_A_pct, 1)})` : undefined} spark={spark("ruptura")} info="SKU-loja-dias com demanda não atendida ÷ SKU-loja-dias com loja aberta." ask="Ruptura por dia da semana" />
+            <Kpi label="Ruptura" valor={pct(res.ruptura_pct, 2)} tom="ruim" delta={d((r) => r.ruptura_pct, "pp", "queda")} meta={metaKpi("ruptura_pct", res.ruptura_pct)} sub={loja === 0 && periodo === "12m" ? `Classe A: ${pct(DADOS.meta.resumo.taxa_ruptura_A_pct, 2)} (meta ${pct(METAS.ruptura_A_pct, 1)})` : undefined} spark={spark("ruptura")} info="SKU-loja-dias com demanda não atendida ÷ SKU-loja-dias com a loja aberta. É uma definição própria deste painel. Benchmarks de mercado costumam medir ruptura de gôndola por auditoria de prateleira e não são comparáveis: por isso a referência aqui é a meta interna, não um número de setor." ask="Ruptura por dia da semana" />
             <Kpi label="Venda perdida" valor={brlCompact(res.venda_perdida)} tom="ruim" delta={loja === 0 && periodo !== "12m" && ref ? delta(res.venda_perdida / nMeses, ref.venda_perdida / 12, "rel", "queda") : d((r) => r.venda_perdida_pct, "pp", "queda")} meta={metaKpi("venda_perdida_pct", res.venda_perdida_pct)} sub={`${pct(res.venda_perdida_pct, 2)} da receita`} spark={spark("vp")} info="Unidades não atendidas × preço × 0,75 (premissa: 25% dos clientes levam outro item)." ask="Quais SKUs concentram a venda perdida?" />
           </KpiStrip>
 

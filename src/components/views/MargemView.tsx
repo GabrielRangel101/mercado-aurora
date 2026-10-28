@@ -100,7 +100,87 @@ export function MargemView() {
       <Panel ask="Qual categoria tem maior margem real no Centro?" title="Margem real por categoria e loja" summary="cor: desvio contra a média da categoria" info="Verde: a loja rende acima da média da categoria. Vermelho: abaixo. Diferenças de 2 a 3 p.p. já são relevantes.">
         <HeatGrid corner="Categoria" cols={LOJAS_CURTAS} rows={linhas} />
       </Panel>
+
+      <MarcaPropria />
     </div>
+  );
+}
+
+function MarcaPropria() {
+  const { marcas } = DADOS.marcas;
+  const { propria_vs_terceiros: pt } = DADOS.marcas;
+  const propria = marcas.find((m) => m.tipo === "Marca própria");
+  const terceiros = marcas.filter((m) => m.tipo === "Terceiros");
+  const recT = terceiros.reduce((a, m) => a + m.receita, 0);
+  const margT = terceiros.reduce((a, m) => a + m.margem_real_pct * m.receita, 0) / (recT || 1);
+  const cats = Array.from(new Set(pt.map((x) => x.categoria)));
+  const comp = cats
+    .map((c) => {
+      const a = pt.find((x) => x.categoria === c && x.tipo === "Marca própria");
+      const b = pt.find((x) => x.categoria === c && x.tipo === "Terceiros");
+      return a && b ? { categoria: c, propria: a.margem_real_pct, terceiros: b.margem_real_pct, dif: a.margem_real_pct - b.margem_real_pct, receita: a.receita } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => b.dif - a.dif);
+  return (
+    <Panel
+      title="Marca própria contra terceiros"
+      summary={propria ? `própria ${pct(propria.margem_real_pct)} · terceiros ${pct(margT)}` : undefined}
+      ask="Margem real por marca"
+      info="Margem real = receita − custo − perda a custo. A comparação por categoria evita misturar produtos de margens naturalmente diferentes. Granel e produtos sem marca (hortifrúti, açougue, padaria) ficam de fora da comparação."
+    >
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full text-xs tabular-nums">
+            <thead>
+              <tr className="text-left text-[11px] text-muted-foreground">
+                <th className="py-1.5 pr-2 font-medium">Marca</th>
+                <th className="px-2 py-1.5 text-right font-medium">Receita</th>
+                <th className="px-2 py-1.5 text-right font-medium">Mg real</th>
+                <th className="px-2 py-1.5 text-right font-medium">Perda</th>
+                <th className="py-1.5 pl-2 text-right font-medium">Ruptura</th>
+              </tr>
+            </thead>
+            <tbody>
+              {marcas.map((m) => (
+                <tr key={m.marca} className="border-t">
+                  <td className="py-2 pr-2 font-medium text-foreground">
+                    {m.marca}
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">{m.tipo === "Marca própria" ? "própria" : m.tipo === "Sem marca" ? "" : ""}</span>
+                  </td>
+                  <td className="px-2 py-2 text-right">{brlCompact(m.receita)} · {pct(m.share_receita_pct, 0)}</td>
+                  <td className="px-2 py-2 text-right text-foreground">{pct(m.margem_real_pct)}</td>
+                  <td className="px-2 py-2 text-right">{pct(m.perda_pct_receita, 2)}</td>
+                  <td className="py-2 pl-2 text-right">{pct(m.ruptura_pct, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full text-xs tabular-nums">
+            <thead>
+              <tr className="text-left text-[11px] text-muted-foreground">
+                <th className="py-1.5 pr-2 font-medium">Categoria</th>
+                <th className="px-2 py-1.5 text-right font-medium">Própria</th>
+                <th className="px-2 py-1.5 text-right font-medium">Terceiros</th>
+                <th className="py-1.5 pl-2 text-right font-medium">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comp.map((c) => (
+                <tr key={c.categoria} className="border-t">
+                  <td className="py-2 pr-2 font-medium text-foreground">{c.categoria}</td>
+                  <td className="px-2 py-2 text-right text-foreground">{pct(c.propria)}</td>
+                  <td className="px-2 py-2 text-right">{pct(c.terceiros)}</td>
+                  <td className={`py-2 pl-2 text-right font-semibold ${c.dif >= 0 ? "text-positive" : "text-danger"}`}>{pp(c.dif, 1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Panel>
   );
 }
 

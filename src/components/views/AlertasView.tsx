@@ -5,6 +5,7 @@ import { brlCompact, dec, int } from "@/lib/format";
 import type { EventoAlerta } from "@/lib/types";
 
 const SEV = { alta: "risco", media: "atencao", baixa: "neutro" } as const;
+const ROT_SEV = { alta: "alta", media: "média", baixa: "baixa" } as const;
 
 /** Troca *texto* por negrito, como no WhatsApp. */
 function Whats({ texto }: { texto: string }) {
@@ -21,7 +22,7 @@ function Whats({ texto }: { texto: string }) {
 }
 
 function detalhe(e: EventoAlerta): string {
-  if (e.regra === "R3") return `${int(e.estoque)} un · vence em ${e.dias_para_vencer} d`;
+  if (e.regra === "R3") return `${int(e.sobra_un ?? e.estoque)} un não vendem até vencer em ${e.dias_para_vencer} d`;
   if (e.regra === "R4") return `${int(e.estoque)} un · ${dec(e.cobertura_dias, 0)} dias de estoque`;
   return `${int(e.estoque)} un · ${dec(e.cobertura_dias, 1)} d de cobertura`;
 }
@@ -48,9 +49,18 @@ export function AlertasView() {
         </p>
       </div>
 
+      <div className="rounded-lg border bg-card/70 p-3 text-xs leading-relaxed text-foreground">
+        <p>
+          <strong>Um alerta por item e loja.</strong> {alertas.deduplicacao.regra} {int(alertas.deduplicacao.sku_loja_com_mais_de_uma_regra)} itens acionavam mais de uma regra e ficaram só com a de maior precedência.
+        </p>
+        <p className="mt-1.5 text-muted-foreground">
+          Severidade pelo dinheiro em risco: alta a partir de {brlCompact(alertas.severidade_faixas.alta)}, média a partir de {brlCompact(alertas.severidade_faixas.media)}. A mensagem diária leva no máximo {alertas.max_itens_mensagem} itens, do maior R$ para o menor; o resto fica no link.
+        </p>
+      </div>
+
       <KpiStrip className="md:grid-cols-4 xl:grid-cols-4">
         {alertas.regras.map((r) => (
-          <Kpi key={r.id} label={`${r.id} · ${r.nome}`} valor={int(totalPor(r.id))} sub={`${r.horario} · para ${r.destino}`} tom={r.id === "R1" ? "ruim" : "neutro"} info={`${r.condicao}. Ação: ${r.acao}.`} />
+          <Kpi key={r.id} label={`${r.id} · ${r.nome}`} valor={int(totalPor(r.id))} sub={totalPor(r.id) === 0 ? `nenhum item passa do piso hoje · ${r.horario}` : `${r.horario} · para ${r.destino}`} tom={r.id === "R1" ? "ruim" : "neutro"} info={`${r.condicao}. Ação: ${r.acao}.`} />
         ))}
       </KpiStrip>
 
@@ -72,7 +82,7 @@ export function AlertasView() {
                     <td className="py-1.5 pr-2">
                       <p className="font-medium text-foreground">{e.produto}</p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <Tag tom={SEV[e.severidade]}>{e.regra}</Tag>
+                        <Tag tom={SEV[e.severidade]}>{e.regra} · {ROT_SEV[e.severidade]}</Tag>
                         {e.acao}
                       </p>
                     </td>

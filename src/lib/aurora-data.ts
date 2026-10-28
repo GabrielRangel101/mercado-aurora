@@ -1,6 +1,7 @@
 // Fonte única de dados da interface: JSONs estáticos gerados por scripts/gerar_dados.py.
 // Os dois arquivos grandes (série diária e semanal por categoria) carregam sob demanda.
 import alertas from "@/data/alertas.json";
+import caixasPremissas from "@/data/caixas_premissas.json";
 import categorias from "@/data/categorias.json";
 import cesta from "@/data/cesta.json";
 import curvaAbc from "@/data/curva_abc.json";
@@ -8,10 +9,12 @@ import horario from "@/data/horario_caixas.json";
 import kpisMensais from "@/data/kpis_mensais.json";
 import lojaCategoria from "@/data/loja_categoria.json";
 import lojas from "@/data/lojas.json";
+import marcas from "@/data/marcas.json";
 import meta from "@/data/meta.json";
 import perdasMes from "@/data/perdas_mensal_categoria.json";
 import perdasMotivos from "@/data/perdas_motivos.json";
 import rupturaDow from "@/data/ruptura_dia_semana.json";
+import rupturaCausas from "@/data/ruptura_causas.json";
 import rupturaSemanal from "@/data/ruptura_semanal.json";
 import rupturaSkus from "@/data/ruptura_skus.json";
 import { gerarInsights, type ViewId } from "./insights";
@@ -34,6 +37,9 @@ export const DADOS = {
   cesta,
   horario,
   alertas,
+  rupturaCausas,
+  marcas,
+  caixasPremissas,
 } as unknown as Dados;
 
 export const INSIGHTS = gerarInsights(DADOS);

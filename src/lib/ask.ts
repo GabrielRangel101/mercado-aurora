@@ -686,10 +686,11 @@ export function interpretar(texto: string, d: Dados, anterior?: Consulta): { con
   return { consulta, topico };
 }
 
-export type Topico = "porque" | "dados" | "definicao" | "simulacao" | "resumo" | "alertas" | "cesta" | "caixas" | "contagem" | "ajuda" | "fora";
+export type Topico = "porque" | "dados" | "definicao" | "simulacao" | "resumo" | "alertas" | "cesta" | "caixas" | "causa" | "contagem" | "ajuda" | "fora";
 
 function detectarTopico(t: string, c: Consulta): Topico {
-  if (tem(t, /previs|forecast|projec|concorr|fornecedor|funcionari|salario|folha|imposto|aluguel|clima|pesquisa de satisf|nps|cartao de fidel|cliente [a-z]+ comprou|cpf/)) return "fora";
+  if (tem(t, /previs|forecast|projec|concorr|funcionari|salario|folha|imposto|aluguel|clima|pesquisa de satisf|nps|cartao de fidel|cliente [a-z]+ comprou|cpf/)) return "fora";
+  if (tem(t, /fornecedor|atraso|lead ?time|prazo de entrega|no prazo|causa d[ae] (ruptura|falta)|quem aciona|estoque de seguranca|pico de demanda/) && !c.medida?.startsWith("perda")) return "causa";
   if (tem(t, /\bpor ?que\b|o que explica|qual (a )?causa|\bcausas?\b|o que (esta )?(puxando|derrubando|causando)|\bmotivo d[ao]\b/) && c.medida && ["perda", "perda_valor", "margem_real", "margem_bruta", "ruptura", "venda_perdida"].includes(c.medida)) return "porque";
   if (tem(t, /o que (e|significa|quer dizer)|como (e )?(calcul|medi)|defini|formula|explica (a |o )?(metrica|margem|ruptura|lift|curva)/)) return "definicao";
   if (tem(t, /simul|e se |se eu |se a gente|se reduzir|se recuper|quanto (vale|ganho|ganhar|economiz)|reduzir (a )?perda|recuperar/) && tem(t, /\d+\s*%|perda|ruptura|venda perdida|margem/)) return "simulacao";
@@ -1127,18 +1128,38 @@ function responderCesta(pergunta: string, t: string, c: Consulta, d: Dados): Res
   };
 }
 
+function responderCausa(pergunta: string, d: Dados): Resposta {
+  const rc = d.rupturaCausas;
+  const top = [...rc.por_causa].sort((a, b) => b.venda_perdida - a.venda_perdida);
+  const forn = rc.fornecedores.filter((f) => f.fornecedor !== "Granel / sem marca");
+  const pior = [...forn].sort((a, b) => a.pct_no_prazo - b.pct_no_prazo)[0];
+  return {
+    pergunta,
+    titulo: "Causa da ruptura",
+    texto: `Da venda perdida de ${brlCompact(top.reduce((a, c) => a + c.venda_perdida, 0))}, ${top.map((c) => `${pct(c.pct_venda_perdida, 0)} vem de ${c.causa.toLowerCase()} (${brlCompact(c.venda_perdida)})`).join(", ")}. O fornecedor com menos pedidos no prazo é ${pior.fornecedor}, com ${pct(pior.pct_no_prazo, 1)} e atraso médio de ${dec(pior.atraso_medio_dias, 1)} dias quando atrasa. ${rc.nota} ${rc.fornecedor_e_marca}`,
+    blocos: [
+      { tipo: "tabela", colunas: ["Causa", "Venda perdida", "% do total"], linhas: top.map((c) => [c.causa, brlCompact(c.venda_perdida), pct(c.pct_venda_perdida, 0)]) },
+      { tipo: "tabela", colunas: ["Fornecedor (marca)", "No prazo", "Atraso médio", "Venda perdida por atraso"], linhas: rc.fornecedores.map((f) => [f.fornecedor, pct(f.pct_no_prazo, 1), `${dec(f.atraso_medio_dias, 1)} d`, brlCompact(f.venda_perdida_atraso)]) },
+    ],
+    seguintes: ["Quais SKUs concentram a venda perdida?", "Ruptura por categoria", "Simule recuperar 30% da venda perdida"],
+    cobertura: "ok",
+    fonte: "Fonte: simulação de estoque dia a dia, causa atribuída por regra",
+    view: "ruptura",
+  };
+}
+
 function responderCaixas(pergunta: string, c: Consulta, d: Dados): Resposta {
   const hs = d.horario.filter((h) => (!c.filtros.loja?.length || c.filtros.loja.includes(h.loja_id)) && (!c.filtros.dow?.length || c.filtros.dow.includes(h.dow)));
-  const faltas = hs.filter((h) => h.gap >= 1).sort((a, b) => b.gap - a.gap);
-  const sobras = hs.filter((h) => h.gap <= -2).length;
+  const faltas = hs.filter((h) => h.falta >= 1).sort((a, b) => b.falta - a.falta || b.venda_em_risco_hora - a.venda_em_risco_hora);
+  const sobras = hs.filter((h) => h.sobra >= 2).length;
   const lojaN = (id: number) => lojaCurta(d.lojas.find((l) => l.loja_id === id)?.nome ?? `${id}`);
   if (!faltas.length) return { pergunta, titulo: "Caixas", texto: `Nenhuma faixa de hora com falta de caixa nesse recorte. Há ${int(sobras)} faixas com 2 ou mais caixas sobrando.`, blocos: [], seguintes: ["Onde falta caixa?", "Qual o horário de pico?"], cobertura: "ok", fonte: "Fonte: cupons médios por hora e escala de caixas", view: "lojas" };
   const pico = [...hs].sort((a, b) => b.cupons_medios - a.cupons_medios)[0];
   return {
     pergunta,
     titulo: "Falta de caixa por faixa de hora",
-    texto: `${faltas.length} faixas com falta de caixa. O pior caso é ${lojaN(faltas[0].loja_id)} ${diaLongo(faltas[0].dia)} às ${faltas[0].hora}h: ${faltas[0].caixas_necessarios} caixas necessários, ${faltas[0].caixas_escalados} escalados. O pico de movimento no recorte é ${lojaN(pico.loja_id)} ${diaLongo(pico.dia)} às ${pico.hora}h (${dec(pico.cupons_medios, 0)} cupons/hora). Há ${int(sobras)} faixas com 2 ou mais caixas sobrando.`,
-    blocos: [{ tipo: "tabela", colunas: ["Loja", "Dia", "Hora", "Necessários", "Escalados"], linhas: faltas.slice(0, 8).map((h) => [lojaN(h.loja_id), cap(diaLongo(h.dia)), `${h.hora}h`, String(h.caixas_necessarios), String(h.caixas_escalados)]) }],
+    texto: `${faltas.length} faixas com falta de caixa. O pior caso é ${lojaN(faltas[0].loja_id)} ${diaLongo(faltas[0].dia)} às ${faltas[0].hora}h: ${faltas[0].caixas_necessarios} caixas necessários, ${faltas[0].caixas_escalados} escalados (falta ${faltas[0].falta}). Nas ${faltas.length} faixas, a venda em risco por fila é de ${brlCompact(faltas.reduce((a, h) => a + h.venda_em_risco_hora, 0) * 52)} por ano contra ${brlCompact(faltas.reduce((a, h) => a + h.custo_reforco_hora, 0) * 52)} para pagar o reforço (premissa: ${d.caixasPremissas.desistencia_fila_pct}% dos cupons acima da capacidade desistem; operador a R$ ${d.caixasPremissas.custo_operador_hora}/h). O pico de movimento no recorte é ${lojaN(pico.loja_id)} ${diaLongo(pico.dia)} às ${pico.hora}h (${dec(pico.cupons_medios, 0)} cupons/hora). Há ${int(sobras)} faixas com 2 ou mais caixas sobrando.`,
+    blocos: [{ tipo: "tabela", colunas: ["Loja", "Dia", "Hora", "Falta", "Venda em risco/dia", "Reforço/dia", "Decisão"], linhas: faltas.slice(0, 8).map((h) => [lojaN(h.loja_id), cap(diaLongo(h.dia)), `${h.hora}h`, `${h.falta} caixa${h.falta > 1 ? "s" : ""}`, brlCompact(h.venda_em_risco_hora), brlCompact(h.custo_reforco_hora), h.decisao]) }],
     seguintes: ["Qual o horário de pico no Centro?", "Falta caixa no sábado?", "Ticket médio por loja"],
     cobertura: "ok",
     fonte: "Fonte: cupons médios por hora e escala de caixas",
@@ -1189,7 +1210,7 @@ function perguntarBruto(pergunta: string, f: Fontes, anterior?: Consulta): Respo
   const { consulta, topico } = interpretar(texto, d, anterior);
   switch (topico) {
     case "fora":
-      return vazia(pergunta, "Isso não existe nos dados do painel: ele só tem vendas, margem, perdas, ruptura, cestas, caixas e alertas de 4 lojas fictícias, de out/25 a set/26. Não há previsão, fornecedores, equipe nem clientes individuais.", SUGESTOES_BASE.slice(0, 4));
+      return vazia(pergunta, "Isso não existe nos dados do painel: ele só tem vendas, margem, perdas, ruptura, cestas, caixas e alertas de 4 lojas fictícias, de out/25 a set/26. Não há previsão, cadastro real de fornecedores, equipe nem clientes individuais.", SUGESTOES_BASE.slice(0, 4));
     case "porque":
       return responderPorQue(pergunta, consulta, f);
     case "definicao":
@@ -1204,6 +1225,8 @@ function perguntarBruto(pergunta: string, f: Fontes, anterior?: Consulta): Respo
       return responderCesta(pergunta, t, consulta, d);
     case "caixas":
       return responderCaixas(pergunta, consulta, d);
+    case "causa":
+      return responderCausa(pergunta, d);
     case "contagem":
       return responderContagem(pergunta, t, consulta, d);
     case "ajuda":

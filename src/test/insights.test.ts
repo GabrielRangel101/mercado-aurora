@@ -22,6 +22,7 @@ const d = {
   cesta: j("cesta.json"),
   horario: j("horario_caixas.json"),
   alertas: j("alertas.json"),
+  rupturaCausas: j("ruptura_causas.json"), marcas: j("marcas.json"), caixasPremissas: j("caixas_premissas.json"),
 } as Dados;
 
 describe("dados gerados", () => {

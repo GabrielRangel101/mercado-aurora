@@ -45,7 +45,7 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
   return (
     <div className="min-h-screen">
       {/* barra lateral (desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col bg-[var(--side-bg)] px-3 py-4 text-[var(--side-fg)] lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col bg-[var(--side-bg)] px-3 py-4 text-[var(--side-fg)] xl:flex">
         <Link to="/" search={{ view: "geral" }} className="mb-6 flex items-center gap-2.5 px-2">
           <Logo className="size-9" />
           <div className="leading-tight">
@@ -74,11 +74,11 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
         </div>
       </aside>
 
-      <div className={cn("min-h-screen transition-[padding] duration-200 lg:pl-56", ai.aberto && "xl:pr-[26.5rem]")}>
+      <div className={cn("min-h-screen transition-[padding] duration-200 xl:pl-56", ai.aberto && "xl:pr-[26.5rem]")}>
         {/* topo */}
         <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
           <div className="flex items-center gap-3 px-4 py-3 lg:px-6 2xl:px-8">
-            <Link to="/" search={{ view: "geral" }} className="shrink-0 lg:hidden" aria-label="Mercado Aurora">
+            <Link to="/" search={{ view: "geral" }} className="shrink-0 xl:hidden" aria-label="Mercado Aurora">
               <Logo className="size-8" />
             </Link>
             <div className="min-w-0">
@@ -103,7 +103,7 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
             </button>
           </div>
           <div id="barra-filtros" />
-          <nav aria-label="Telas do dashboard" className="scrollbar-thin flex gap-1 overflow-x-auto px-4 pb-2 lg:hidden">
+          <nav aria-label="Telas do dashboard" className="scrollbar-thin flex gap-1 overflow-x-auto px-4 pb-2 xl:hidden">
             {VIEWS.map((v) => (
               <Link
                 key={v.id}
@@ -120,7 +120,7 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
 
         <main className="px-4 py-5 lg:px-6 2xl:px-8">{children}</main>
         <footer className="px-4 pb-8 pt-1 text-[11px] leading-relaxed text-muted-foreground lg:px-6 2xl:px-8">
-          Marcas, lojas e números são inventados: o gerador (Python, seed fixa) simula o estoque dia a dia, e a ruptura e a perda nascem dessa simulação.
+          Marcas, lojas e números são inventados: o gerador (Python, seed fixa) simula o estoque dia a dia, e a ruptura e a perda nascem dessa simulação. Catálogo de 280 SKUs, lift alto nas cestas (missões de compra) e causas de ruptura atribuídas por regra são simplificações de um conjunto sintético, não retrato de uma loja real.
         </footer>
       </div>
 

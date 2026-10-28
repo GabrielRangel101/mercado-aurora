@@ -485,7 +485,10 @@ def preparar(rng, produtos, datas):
     z_por_classe = np.array([Z_A, Z_B, Z_C])
     z = z_por_classe[cls_pre[sku_idx]].astype(float)
     # Jardins: superdimensiona perecoveis (gera sobra e perda)
-    z = np.where((loja_idx == IDX_JARDINS) & perec, Z_JARDINS_PEREC, z)
+    rng_z = np.random.default_rng(SEED + 32)
+    z_cat_jardins = {c: Z_JARDINS_PEREC + float(rng_z.normal(0, 0.35)) for c in mult_jardins}
+    for c, zc in z_cat_jardins.items():
+        z = np.where((loja_idx == IDX_JARDINS) & (cat_N == ci[c]), zc, z)
 
     # SKUs-problema: classe A com fornecedor ruim (z baixo + janelas de atraso)
     candidatos = [i for i in ordem[:60]]
@@ -509,7 +512,12 @@ def preparar(rng, produtos, datas):
     alvo = np.array([CATEGORIAS[c]["perda"] for c in cats])
     pmult_sku = np.array([p["perda_mult"] for p in produtos])
     ploss_base = alvo[cat_N] / (R / 2.0 + L + 1.5) * pmult_sku[sku_idx]
-    ploss_store = np.where((loja_idx == IDX_JARDINS) & perec, MULT_PERDA_JARDINS, 1.0)
+    # perda por loja: Jardins superdimensiona perecíveis, mas cada categoria reage de um jeito (sem fator único)
+    rng_pl = np.random.default_rng(SEED + 31)
+    ruido_pl = np.exp(rng_pl.normal(0, 0.14, (nl, len(cats))))
+    ploss_store = ruido_pl[loja_idx, cat_N].copy()
+    for c, mlt in mult_jardins.items():
+        ploss_store = np.where((loja_idx == IDX_JARDINS) & (cat_N == ci[c]), ploss_store * mlt, ploss_store)
 
     seas, cdow, aberto = sazonalidade(datas_sim, cats)
     dayfac = fatores_dia(datas_sim)
@@ -547,6 +555,12 @@ def simular(P, p_scale):
     perda = np.zeros((To, N))
     stock_end = np.zeros((To, N))
     m_hist = np.zeros((To, N))
+    causa = np.zeros((To, N), dtype=np.int8)   # 0 sem ruptura | 1 atraso do fornecedor | 2 pedido subdimensionado | 3 pico de demanda
+    atraso_ate = np.full(N, -1)                # dia em que chega o último pedido atrasado
+    n_ped = np.zeros(N)
+    n_atr = np.zeros(N)
+    dias_atr = np.zeros(N)
+    z_baixo = z <= Z_C + 1e-9
 
     for t in range(T):
         arr = arrivals[t]
@@ -573,14 +587,24 @@ def simular(P, p_scale):
         mask = ((t + off) % R) == 0
         nivel = m * Pn + z * np.sqrt(np.maximum(var, 1e-6) * Pn)
         ordem = np.where(mask, np.ceil(np.maximum(0.0, nivel - (stock + pipe))), 0.0)
-        chega = np.minimum(t + L + P["extra"][t].astype(int), T + 39)
+        ex = P["extra"][t].astype(int)
+        chega = np.minimum(t + L + ex, T + 39)
         arrivals[chega, idx] += ordem
         pipe += ordem
+        if t >= W:
+            pedido = ordem > 0
+            n_ped += pedido
+            n_atr += pedido & (ex > 0)
+            dias_atr += np.where(pedido, ex, 0)
+        atraso_ate = np.where((ordem > 0) & (ex > 0), np.maximum(atraso_ate, chega), atraso_ate)
 
         if t >= W:
             k = t - W
             units[k], lost[k], perda[k], stock_end[k], m_hist[k] = v, lo, pe, stock, m
-    return dict(units=units, lost=lost, perda=perda, stock_end=stock_end, m=m_hist)
+            # causa da ruptura do dia (regra, nessa ordem): pedido atrasado ainda a caminho > estoque de segurança baixo > demanda
+            causa[k] = np.where(lo > 0, np.where(atraso_ate >= t, 1, np.where(z_baixo, 2, 3)), 0)
+    return dict(units=units, lost=lost, perda=perda, stock_end=stock_end, m=m_hist, causa=causa,
+                n_ped=n_ped, n_atr=n_atr, dias_atr=dias_atr)
 
 
 def calibrar_perdas(P, iteracoes=3):
@@ -607,6 +631,7 @@ Z_PROBLEMA = -0.50
 N_PROBLEMA = 14
 P_FALHA = 0.0025
 MULT_PERDA_JARDINS = 1.35
+mult_jardins = {"Hortifruti": 1.50, "Frios e Laticínios": 1.18, "Padaria": 1.32, "Açougue": 1.12}
 # dias de venda em estoque minimo de exposicao (frente de gondola), por categoria.
 # So entra nas metricas de cobertura e giro; a ruptura e a perda vem do estoque vendavel simulado.
 EXPO = {"Mercearia": 8, "Bebidas": 6, "Frios e Laticínios": 3, "Açougue": 0.8, "Hortifruti": 1.0,
@@ -709,10 +734,20 @@ def gerar_cestas(produtos, datas):
                 confianca_b_a_pct=round(100 * float(c / freq[j]), 1),
                 lift=round(float(lift), 2), cestas=int(c)))
     df = pd.DataFrame(pares)
-    top_lift = df[df.suporte_pct >= 0.6].sort_values("lift", ascending=False).head(30)
+    # margem e flag de tráfego por item-base (média simples dos SKUs/marcas do item)
+    pb = pd.DataFrame(produtos).groupby("base_item").agg(margem=("margem", "mean"), flag=("flag", "first"), categoria=("categoria", "first"))
+    for lado in ("a", "b"):
+        df[f"margem_{lado}_pct"] = df[f"item_{lado}"].map(lambda x: round(100 * float(pb.margem.get(x, np.nan)), 1))
+        df[f"trafego_{lado}"] = df[f"item_{lado}"].map(lambda x: bool(pb.flag.get(x, "") == "T"))
+        df[f"categoria_{lado}"] = df[f"item_{lado}"].map(lambda x: pb.categoria.get(x, ""))
+    df["margem_combo_pct"] = ((df.margem_a_pct + df.margem_b_pct) / 2).round(1)
+    top_lift = df[df.suporte_pct >= 2.0].sort_values("lift", ascending=False).head(30)
     top_sup = df.sort_values("suporte_pct", ascending=False).head(15)
     top_itens = sorted(
-        [dict(item=base_items[i], penetracao_pct=round(100 * float(sup[i]), 1)) for i in range(ni)],
+        [dict(item=base_items[i], penetracao_pct=round(100 * float(sup[i]), 1),
+              margem_pct=round(100 * float(pb.margem.get(base_items[i], np.nan)), 1),
+              trafego=bool(pb.flag.get(base_items[i], "") == "T"), categoria=pb.categoria.get(base_items[i], ""))
+         for i in range(ni)],
         key=lambda x: -x["penetracao_pct"])[:20]
     out = dict(
         n_cestas=N_CESTAS,
@@ -721,7 +756,7 @@ def gerar_cestas(produtos, datas):
         pares_maior_suporte=registros(top_sup, 2),
         itens_mais_presentes=top_itens,
         nota="Cestas sinteticas geradas por missoes de compra (churrasco, cafe da manha etc.). "
-             "Lift > 1 = os itens aparecem juntos mais do que o acaso.")
+             "Lift > 1 = os itens aparecem juntos mais do que o acaso. Ranking de lift só com pares de suporte >= 2%.")
     missoes_part = {m: round(100 * cont_missao[m] / N_CESTAS, 1) for m in nomes_m}
     return out, missoes_part
 
@@ -753,8 +788,17 @@ def main():
     preco0 = np.array([p["preco"] for p in produtos])
     custo0 = np.array([p["custo"] for p in produtos])
     sku_idx, loja_idx, cat_N = P["sku_idx"], P["loja_idx"], P["cat_N"]
-    preco_t = infl[:, None] * preco0[sku_idx][None, :]
-    custo_t = infl[:, None] * custo0[sku_idx][None, :]
+    # formato e região: preço e custo variam por loja e categoria (Jardins pratica preço maior; Vila Nova compra em menor escala)
+    rng_f = np.random.default_rng(SEED + 33)
+    nlj, ncat = len(LOJAS), len(cats)
+    ruido_p = rng_f.normal(0, 0.008, (nlj, ncat))
+    ruido_c = rng_f.normal(0, 0.005, (nlj, ncat))
+    nivel_p = np.array([0.0, 0.012, -0.006, 0.002])
+    nivel_c = np.array([0.0, 0.002, 0.006, 0.001])
+    fp = 1 + nivel_p[:, None] + ruido_p
+    fc = 1 + nivel_c[:, None] + ruido_c
+    preco_t = infl[:, None] * (preco0[sku_idx] * fp[loja_idx, cat_N])[None, :]
+    custo_t = infl[:, None] * (custo0[sku_idx] * fc[loja_idx, cat_N])[None, :]
 
     rec = units * preco_t
     cmv = units * custo_t
@@ -1017,6 +1061,62 @@ def main():
         pct_skus_classe_A=pct(n_a, n),
     )
 
+    # ---------------- causa da ruptura, fornecedores e marcas ----------------
+    CAUSAS = {1: "Atraso do fornecedor", 2: "Pedido subdimensionado", 3: "Pico de demanda"}
+    df["causa"] = out["causa"].ravel()
+    mk = pd.DataFrame(produtos)[["marca", "categoria"]]
+    mk["marca"] = mk.marca.fillna("Granel / sem marca")
+    df["marca"] = mk.marca.values[df.sku.values]
+    rup = df[df.causa > 0]
+    tot_vp = float(rup.vperd.sum())
+    por_causa = rup.groupby("causa").agg(dias=("rupt", "sum"), venda_perdida=("vperd", "sum")).reset_index()
+    por_causa["causa"] = por_causa.causa.map(CAUSAS)
+    por_causa["pct_venda_perdida"] = (100 * por_causa.venda_perdida / tot_vp).round(1)
+    cat_causa = rup.groupby(["cat_nome", "causa"]).vperd.sum().reset_index()
+    cat_causa["causa"] = cat_causa.causa.map(CAUSAS)
+    cat_causa = cat_causa.rename(columns={"cat_nome": "categoria", "vperd": "venda_perdida"})
+    loja_causa = rup.groupby(["loja", "causa"]).vperd.sum().reset_index()
+    loja_causa["loja_id"] = loja_causa.loja + 1
+    loja_causa["causa"] = loja_causa.causa.map(CAUSAS)
+    loja_causa = loja_causa.rename(columns={"vperd": "venda_perdida"})[["loja_id", "causa", "venda_perdida"]]
+    ped = pd.DataFrame({"sku": sku_idx, "cat": np.array(cats)[cat_N], "n_ped": out["n_ped"], "n_atr": out["n_atr"], "dias_atr": out["dias_atr"]})
+    ped["marca"] = mk.marca.values[ped.sku.values]
+    lead_plan = np.array([CATEGORIAS[c]["L"] for c in cats])
+    def agrega_forn(g):
+        return pd.Series(dict(pedidos=int(g.n_ped.sum()), pct_no_prazo=round(100 * (1 - g.n_atr.sum() / max(g.n_ped.sum(), 1)), 1),
+                              atraso_medio_dias=round(float(g.dias_atr.sum() / max(g.n_atr.sum(), 1)), 1)))
+    forn = ped.groupby("marca").apply(agrega_forn, include_groups=False).reset_index().rename(columns={"marca": "fornecedor"})
+    vp_forn = rup[rup.causa == 1].groupby("marca").vperd.sum().rename("venda_perdida_atraso").reset_index().rename(columns={"marca": "fornecedor"})
+    forn = forn.merge(vp_forn, on="fornecedor", how="left").fillna(0).sort_values("venda_perdida_atraso", ascending=False)
+    leadcat = ped.groupby("cat").apply(agrega_forn, include_groups=False).reset_index().rename(columns={"cat": "categoria"})
+    leadcat["lead_planejado_dias"] = leadcat.categoria.map({c: CATEGORIAS[c]["L"] for c in cats})
+    ruptura_causas = dict(
+        nota=("Causa atribuída por regra, dia a dia: (1) há pedido atrasado ainda a caminho; senão (2) o SKU opera com estoque de segurança baixo "
+              "(classe C ou SKU com nível de serviço reduzido); senão (3) pico de demanda acima da previsão. "
+              "Não distingue ruptura de gôndola (produto no fundo da loja) de estoque zero, e não há acuracidade de inventário: "
+              "isso exige leitura física de estoque, que este conjunto não simula."),
+        por_causa=registros(por_causa, 2), por_categoria=registros(cat_causa, 2), por_loja=registros(loja_causa, 2),
+        fornecedores=registros(forn, 2), lead_time_categoria=registros(leadcat, 2),
+        fornecedor_e_marca="O conjunto não tem cadastro de fornecedores: a marca do produto faz o papel de fornecedor.")
+
+    marcas_df = df.groupby("marca").agg(receita=("rec", "sum"), cmv=("cmv", "sum"), perda_c=("perda_c", "sum"),
+                                         venda_perdida=("vperd", "sum"), dias_ruptura=("rupt", "sum"), dias=("aberto", "sum")).reset_index()
+    marcas_df["margem_bruta_pct"] = 100 * (marcas_df.receita - marcas_df.cmv) / marcas_df.receita
+    marcas_df["margem_real_pct"] = 100 * (marcas_df.receita - marcas_df.cmv - marcas_df.perda_c) / marcas_df.receita
+    marcas_df["perda_pct_receita"] = 100 * marcas_df.perda_c / marcas_df.receita
+    marcas_df["ruptura_pct"] = 100 * marcas_df.dias_ruptura / marcas_df.dias.clip(lower=1)
+    marcas_df["share_receita_pct"] = 100 * marcas_df.receita / marcas_df.receita.sum()
+    marcas_df["tipo"] = np.where(marcas_df.marca == "Aurora", "Marca própria", np.where(marcas_df.marca == "Granel / sem marca", "Sem marca", "Terceiros"))
+    marcas_out = marcas_df.drop(columns=["cmv", "perda_c", "dias_ruptura", "dias"]).sort_values("receita", ascending=False)
+    # comparação justa: marca própria vs terceiros dentro da mesma categoria
+    dfm = df[df.marca != "Granel / sem marca"].copy()
+    dfm["tipo"] = np.where(dfm.marca == "Aurora", "Marca própria", "Terceiros")
+    mp = dfm.groupby(["cat_nome", "tipo"]).agg(receita=("rec", "sum"), cmv=("cmv", "sum"), perda_c=("perda_c", "sum")).reset_index()
+    mp["margem_real_pct"] = 100 * (mp.receita - mp.cmv - mp.perda_c) / mp.receita
+    mp = mp.rename(columns={"cat_nome": "categoria"})[["categoria", "tipo", "receita", "margem_real_pct"]]
+    ncat_mp = mp.groupby("categoria").tipo.nunique()
+    mp = mp[mp.categoria.isin(ncat_mp[ncat_mp == 2].index)]
+
     # ---------------- horario e caixas ----------------
     prof_sem = {7: 2, 8: 3.5, 9: 4.5, 10: 5, 11: 6, 12: 7.5, 13: 6.5, 14: 4.5, 15: 4.5, 16: 5.5,
                 17: 8, 18: 10, 19: 8, 20: 5, 21: 2.5}
@@ -1026,6 +1126,9 @@ def main():
     dl["dow"] = [datas[int(t)].weekday() for t in dl.t]
     tk_dow = dl[dl.cupons > 0].groupby(["loja", "dow"]).cupons.mean()
     CAP, UTIL = 18.0, 0.85
+    DESISTENCIA = 0.12     # parte dos cupons acima da capacidade que abandona a fila (premissa)
+    CUSTO_HORA = 24.0      # R$/h de um operador de caixa com encargos (premissa)
+    tick_loja = (dl.groupby("loja").receita.sum() / dl.groupby("loja").cupons.sum()).to_dict()
     linhas_h = []
     for l in range(nl):
         N_cx = LOJAS[l]["caixas"]
@@ -1042,103 +1145,136 @@ def main():
                 else:
                     f = 0.7
                 esc = max(2, int(math.floor(N_cx * f + 0.5)))
+                fila = max(0.0, cup_h - esc * CAP * UTIL)
+                venda_risco = fila * DESISTENCIA * tick_loja[l]
+                falta = max(0, nec - esc)
+                custo_ref = falta * CUSTO_HORA
                 linhas_h.append(dict(loja_id=l + 1, dow=dw, dia=DIAS[dw], hora=h,
                                      cupons_medios=round(float(cup_h), 1),
-                                     caixas_necessarios=nec, caixas_escalados=esc, gap=nec - esc))
+                                     caixas_necessarios=nec, caixas_escalados=esc, gap=nec - esc,
+                                     falta=falta, sobra=max(0, esc - nec),
+                                     venda_em_risco_hora=round(float(venda_risco), 2),
+                                     custo_reforco_hora=round(float(custo_ref), 2),
+                                     decisao=("Reforçar" if falta > 0 and venda_risco > custo_ref else "Manter escala" if falta > 0 else "")))
     horario = linhas_h
+    caixas_premissas = dict(cupons_por_hora_por_caixa=CAP, utilizacao_alvo=UTIL, desistencia_fila_pct=100 * DESISTENCIA,
+                            custo_operador_hora=CUSTO_HORA, ticket_por_loja={str(k + 1): round(float(v), 2) for k, v in tick_loja.items()})
 
     # ---------------- alertas (snapshot do ultimo dia) ----------------
+    # Regras avaliadas por SKU-loja; cada SKU-loja gera NO MAXIMO um alerta (precedencia R1 > R3 > R2 > R4),
+    # porque "pedir mais" e "remarcar" sobre o mesmo item no mesmo dia sao ordens opostas.
+    PRECEDENCIA = ["R1", "R3", "R2", "R4"]
+    PISO_R3, PISO_R4 = 50.0, 250.0
+    SEV_ALTA, SEV_MEDIA = 1000.0, 300.0
     rng_a = np.random.default_rng(SEED + 800)
     est_final = stock_end[-1]
     m_final = m_hist[-1]
     sku_cls = np.array([classe_sku[s] for s in range(n)])
     eventos = []
+    n_multi = 0
     for j in range(N):
         s, l = int(sku_idx[j]), int(loja_idx[j])
         p = produtos[s]
         spec = CATEGORIAS[p["categoria"]]
-        cob = float(est_final[j] / max(m_final[j], 0.05))
+        mj = float(max(m_final[j], 0.05))
+        cob = float(est_final[j] / mj)
         cls = sku_cls[s]
-        preco_hoje = p["preco"] * infl[-1]
-        custo_hoje = p["custo"] * infl[-1]
+        preco_hoje = float(preco_t[-1, j])
+        custo_hoje = float(custo_t[-1, j])
         dias_venc = int(rng_a.integers(1, spec["vida"] + 1)) if p["perecivel_item"] else None
         base_ev = dict(loja_id=l + 1, sku_id=p["sku_id"], produto=p["nome"], categoria=p["categoria"],
                        classe=cls, estoque=int(est_final[j]), cobertura_dias=round(cob, 1),
-                       venda_diaria_media=round(float(m_final[j]), 1))
+                       venda_diaria_media=round(mj, 1))
+        candidatos = {}
+        venda_risco = mj * preco_hoje * (1 - SUBSTITUICAO)
         if cls == "A" and cob < 1.0:
-            eventos.append(dict(base_ev, regra="R1", regra_nome="Ruptura iminente (classe A)",
-                                severidade="alta",
-                                impacto_rs=round(float(m_final[j] * preco_hoje * (1 - SUBSTITUICAO)), 2),
-                                acao="Pedido de emergência / transferir entre lojas"))
-        elif cls in ("A", "B") and cob < 1.5:
-            eventos.append(dict(base_ev, regra="R2", regra_nome="Cobertura baixa (A/B)",
-                                severidade="media",
-                                impacto_rs=round(float(m_final[j] * preco_hoje * (1 - SUBSTITUICAO)), 2),
-                                acao="Antecipar próximo pedido"))
-        if (p["perecivel_item"] and spec["alerta_venc"] > 0 and dias_venc is not None
-                and dias_venc <= spec["alerta_venc"] and est_final[j] > 0):
-            risco = float(est_final[j] * custo_hoje)
-            eventos.append(dict(base_ev, regra="R3", regra_nome="Vencimento próximo",
-                                severidade="alta" if risco >= 300 else "media",
-                                dias_para_vencer=dias_venc, impacto_rs=round(risco, 2),
-                                acao="Remarcar -30% hoje e levar para ponta de gôndola"))
+            candidatos["R1"] = dict(regra_nome="Ruptura iminente (classe A)", impacto_rs=venda_risco,
+                                    acao="Pedido de emergência ou transferência entre lojas")
+        if cls in ("A", "B") and 1.0 <= cob < 1.5:
+            candidatos["R2"] = dict(regra_nome="Cobertura baixa (A/B)", impacto_rs=venda_risco,
+                                    acao="Antecipar o próximo pedido")
+        if p["perecivel_item"] and spec["alerta_venc"] > 0 and dias_venc is not None and dias_venc <= spec["alerta_venc"]:
+            # só vale remarcar o que NÃO vai vender até o vencimento
+            sobra = float(est_final[j]) - mj * dias_venc
+            risco = sobra * custo_hoje
+            if sobra > 0 and risco >= PISO_R3:
+                candidatos["R3"] = dict(regra_nome="Vencimento próximo", impacto_rs=risco, dias_para_vencer=dias_venc,
+                                        sobra_un=int(round(sobra)),
+                                        acao="Remarcar -30% e levar para ponta de gôndola")
         expo_d = EXPO[p["categoria"]]
-        if (not p["perecivel_item"]) and cls == "C" and cob + expo_d > 30:
-            base_ev = dict(base_ev, cobertura_dias=round(cob + expo_d, 1))
-            eventos.append(dict(base_ev, regra="R4", regra_nome="Excesso de estoque (C)",
-                                severidade="baixa",
-                                impacto_rs=round(float((est_final[j] + expo_d * m_final[j]) * custo_hoje), 2),
-                                acao="Suspender pedido até cobertura < 20 dias"))
+        if (not p["perecivel_item"]) and cls == "C" and cob > 30:
+            parado = (float(est_final[j]) - 20 * mj) * custo_hoje
+            if parado >= PISO_R4:
+                candidatos["R4"] = dict(regra_nome="Excesso de estoque (C)", impacto_rs=parado,
+                                        acao="Suspender o pedido até a cobertura cair abaixo de 20 dias")
+        if len(candidatos) > 1:
+            n_multi += 1
+        for rid in PRECEDENCIA:
+            if rid in candidatos:
+                c = candidatos[rid]
+                imp = float(c["impacto_rs"])
+                eventos.append(dict(base_ev, regra=rid, severidade="alta" if imp >= SEV_ALTA else "media" if imp >= SEV_MEDIA else "baixa",
+                                    **{**c, "impacto_rs": round(imp, 2)}))
+                break
     ev = pd.DataFrame(eventos)
-    sev_ord = {"alta": 0, "media": 1, "baixa": 2}
-    ev["_s"] = ev.severidade.map(sev_ord)
-    ev = ev.sort_values(["_s", "impacto_rs"], ascending=[True, False]).drop(columns="_s")
+    ev["dias_para_vencer"] = ev["dias_para_vencer"].astype("Int64") if "dias_para_vencer" in ev else None
+    ev = ev.sort_values("impacto_rs", ascending=False).reset_index(drop=True)
     contagem = (ev.groupby(["loja_id", "regra"]).size().reset_index(name="n"))
     top_ev = pd.concat([g.head(12) for _, g in ev.groupby("regra")]).copy()
-    top_ev["_s"] = top_ev.severidade.map(sev_ord)
-    top_ev = top_ev.sort_values(["_s", "impacto_rs"], ascending=[True, False]).drop(columns="_s")
+    top_ev = top_ev.sort_values("impacto_rs", ascending=False)
     top_ev["dias_para_vencer"] = top_ev["dias_para_vencer"].astype("Int64")
+
+    ICONE = {"R1": "🔴", "R3": "🟠", "R2": "🟡", "R4": "⚪"}
+    MAX_MSG = 6
+
+    def brl0(v):
+        return "R$ " + f"{v:,.0f}".replace(",", ".")
 
     def msg_loja(l):
         nome = LOJAS[l]["nome"]
         e = ev[ev.loja_id == l + 1]
-        linhas = [f"*{nome} — Alertas do dia 01/10 07:30*", ""]
-        for rid, titulo in (("R1", "🔴 Ruptura iminente (A)"), ("R3", "🟠 Vencimento próximo"),
-                            ("R2", "🟡 Cobertura baixa"), ("R4", "⚪ Excesso de estoque")):
-            sub = e[e.regra == rid].head(3)
-            tot = int((e.regra == rid).sum())
-            if tot == 0:
-                continue
-            linhas.append(f"*{titulo}* ({tot} itens)")
-            for _, r in sub.iterrows():
-                if rid == "R3":
-                    linhas.append(f"• {r.produto}: {int(r.estoque)} un, vence em {int(r.dias_para_vencer)} d → remarcar -30%")
-                elif rid == "R4":
-                    linhas.append(f"• {r.produto}: {r.cobertura_dias:.0f} dias de estoque (R$ {r.impacto_rs:,.0f} parados)")
-                else:
-                    linhas.append(f"• {r.produto}: {int(r.estoque)} un ({r.cobertura_dias:.1f} d de cobertura)")
-            linhas.append("")
-        linhas.append("Responda *OK* para confirmar ciência.")
+        tot = len(e)
+        topo = e.head(MAX_MSG)
+        cont = e.groupby("regra").size().to_dict()
+        resumo_c = " · ".join(f"{ICONE[r]} {cont[r]} {t}" for r, t in (("R1", "ruptura"), ("R3", "vencimento"), ("R2", "cobertura"), ("R4", "excesso")) if r in cont)
+        linhas = [f"*{nome} · alertas de 01/10, 07:30*", resumo_c, "", f"*Os {len(topo)} de maior valor em risco:*"]
+        for _, r in topo.iterrows():
+            if r.regra == "R3":
+                linhas.append(f"{ICONE['R3']} {r.produto}: {int(r.sobra_un)} un não vendem até vencer em {int(r.dias_para_vencer)} d ({brl0(r.impacto_rs)}) → remarcar -30%")
+            elif r.regra == "R4":
+                linhas.append(f"{ICONE['R4']} {r.produto}: {r.cobertura_dias:.0f} d de estoque ({brl0(r.impacto_rs)} parados) → suspender pedido")
+            elif r.regra == "R1":
+                linhas.append(f"{ICONE['R1']} {r.produto}: {int(r.estoque)} un ({r.cobertura_dias:.1f} d) → pedido de emergência")
+            else:
+                linhas.append(f"{ICONE['R2']} {r.produto}: {int(r.estoque)} un ({r.cobertura_dias:.1f} d) → antecipar pedido")
+        if tot > len(topo):
+            linhas += ["", f"+ {tot - len(topo)} itens menores: mercado-aurora.lovable.app/?view=alertas&loja={l + 1}"]
+        linhas += ["", "Responda *OK* para confirmar ciência."]
         return "\n".join(linhas)
 
     regras = [
-        dict(id="R1", nome="Ruptura iminente (classe A)", severidade="alta",
-             condicao="SKU classe A com cobertura < 1 dia (estoque / venda diária média)",
+        dict(id="R1", nome="Ruptura iminente (classe A)", severidade="por R$ em risco",
+             condicao="SKU classe A com cobertura < 1 dia (estoque ÷ venda diária média)",
              acao="Pedido de emergência ou transferência entre lojas", destino="Comprador + gerente da loja",
              horario="Diário 07:30"),
-        dict(id="R2", nome="Cobertura baixa (A/B)", severidade="media",
+        dict(id="R2", nome="Cobertura baixa (A/B)", severidade="por R$ em risco",
              condicao="SKU classe A ou B com cobertura entre 1 e 1,5 dia",
              acao="Antecipar próximo pedido", destino="Comprador", horario="Diário 07:30"),
-        dict(id="R3", nome="Vencimento próximo", severidade="alta/media",
-             condicao="Perecível (FLV ≤ 3 d, Açougue ≤ 2 d, Frios ≤ 7 d) com estoque > 0; alta se custo em risco ≥ R$ 300",
+        dict(id="R3", nome="Vencimento próximo", severidade="por R$ em risco",
+             condicao=f"Perecível perto do vencimento (FLV ≤ 3 d, Açougue ≤ 2 d, Frios ≤ 7 d), considerando só o que não vende até a data: estoque − venda diária × dias para vencer. Piso de R$ {PISO_R3:.0f}.",
              acao="Remarcar -30% e ponta de gôndola", destino="Gerente da loja", horario="Diário 07:30"),
-        dict(id="R4", nome="Excesso de estoque (C)", severidade="baixa",
-             condicao="Não perecível classe C com cobertura > 30 dias",
+        dict(id="R4", nome="Excesso de estoque (C)", severidade="por R$ em risco",
+             condicao=f"Não perecível classe C com mais de 30 dias de cobertura e pelo menos R$ {PISO_R4:.0f} parados acima de 20 dias de venda (descarta estoque mínimo de exposição)",
              acao="Suspender pedido", destino="Comprador", horario="Semanal (segunda 07:30)"),
     ]
     alertas = dict(
         status="Especificação das regras + simulação sobre o estoque de 30/09/2026. Automação (n8n / Supabase) ainda não conectada.",
         regras=regras,
+        precedencia=PRECEDENCIA,
+        severidade_faixas=dict(alta=SEV_ALTA, media=SEV_MEDIA),
+        deduplicacao=dict(sku_loja_com_mais_de_uma_regra=int(n_multi), alertas_enviados=int(len(ev)),
+                          regra="Um alerta por SKU-loja. Precedência R1 > R3 > R2 > R4: item que vai faltar não é remarcado, e só se remarca o que não vende até o vencimento."),
+        max_itens_mensagem=MAX_MSG,
         contagem_por_loja_regra=registros(contagem, 0),
         total_eventos=int(len(ev)),
         eventos_destaque=registros(top_ev, 2),
@@ -1193,6 +1329,9 @@ def main():
         "perdas_motivos.json": registros(perdas_motivos, 1),
         "cesta.json": cesta,
         "horario_caixas.json": horario,
+        "caixas_premissas.json": caixas_premissas,
+        "ruptura_causas.json": ruptura_causas,
+        "marcas.json": dict(marcas=registros(marcas_out, 2), propria_vs_terceiros=registros(mp, 2)),
         "alertas.json": alertas,
     }
     for nome, obj in arquivos.items():

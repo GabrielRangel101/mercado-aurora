@@ -30,20 +30,65 @@ export function useMounted(): boolean {
   return ok;
 }
 
-/** Carrega um módulo (JSON grande) sob demanda, só no navegador. */
-export function useLazy<T>(loader: () => Promise<T>): T | null {
+export interface Lazy<T> {
+  data: T | null;
+  erro: boolean;
+  recarregar: () => void;
+}
+
+/** Carrega um módulo (JSON grande) sob demanda, só no navegador. Tenta 3 vezes e expõe o erro, em vez de ficar "carregando" para sempre. */
+export function useLazyEstado<T>(loader: () => Promise<T>): Lazy<T> {
   const [data, setData] = useState<T | null>(null);
+  const [erro, setErro] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
     let vivo = true;
-    loader().then((v) => {
-      if (vivo) setData(v);
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const carregar = (n: number) => {
+      loader()
+        .then((v) => {
+          if (vivo) {
+            setData(v);
+            setErro(false);
+          }
+        })
+        .catch(() => {
+          if (!vivo) return;
+          if (n < 2) timer = setTimeout(() => carregar(n + 1), 800 * (n + 1));
+          else setErro(true);
+        });
+    };
+    setErro(false);
+    carregar(0);
     return () => {
       vivo = false;
+      if (timer) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return data;
+  }, [tentativa]);
+  return { data, erro, recarregar: () => setTentativa((x) => x + 1) };
+}
+
+export function useLazy<T>(loader: () => Promise<T>): T | null {
+  return useLazyEstado(loader).data;
+}
+
+/** Estado de carga com saída: mensagem de espera ou botão para tentar de novo. */
+export function Carga({ erro, recarregar, texto = "Carregando a série diária…" }: { erro: boolean; recarregar: () => void; texto?: string }) {
+  return (
+    <div className="flex h-full min-h-24 flex-col items-center justify-center gap-2 text-xs text-muted-foreground" role="status">
+      {erro ? (
+        <>
+          <span>Não consegui carregar os dados desta tela.</span>
+          <button type="button" onClick={recarregar} className="rounded-md border px-2.5 py-1 font-medium text-foreground hover:bg-secondary">
+            Tentar de novo
+          </button>
+        </>
+      ) : (
+        <span>{texto}</span>
+      )}
+    </div>
+  );
 }
 
 /** Área de gráfico com altura fixa. Recharts só monta no cliente (evita descompasso de hidratação). */
