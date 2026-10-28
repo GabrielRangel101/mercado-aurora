@@ -73,6 +73,10 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
           <p className="font-medium text-[var(--side-fg)]">{periodo}</p>
           <p>Rede fictícia de 4 lojas. Dados sintéticos gerados em Python.</p>
           {DADOS.meta.versao_dados && <p>Dados {DADOS.meta.versao_dados}</p>}
+          <p>
+            Por{" "}
+            <a href="https://www.linkedin.com/in/gabriel-rangel-a954ba26a/" target="_blank" rel="noreferrer" className="font-medium text-[var(--side-fg)] underline-offset-2 hover:underline">Gabriel Rangel</a>
+          </p>
         </div>
       </aside>
 
@@ -123,6 +127,12 @@ export function AppShell({ view, periodo, children }: { view: ViewId; periodo: s
         <main className="px-4 py-5 lg:px-6 2xl:px-8">{children}</main>
         <footer className="px-4 pb-8 pt-1 text-[11px] leading-relaxed text-muted-foreground lg:px-6 2xl:px-8">
           Marcas, lojas e números são inventados: o gerador (Python, seed fixa) simula o estoque dia a dia, e a ruptura e a perda nascem dessa simulação. Catálogo de 280 SKUs, lift alto nas cestas (missões de compra) e causas de ruptura atribuídas por regra são simplificações de um conjunto sintético, não retrato de uma loja real.
+          <span className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>Projeto de portfólio de <strong className="font-semibold text-foreground">Gabriel Rangel</strong>, analista de dados.</span>
+            <a href="https://www.linkedin.com/in/gabriel-rangel-a954ba26a/" target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">LinkedIn</a>
+            <a href="https://github.com/GabrielRangel101" target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">GitHub</a>
+            <a href="https://github.com/GabrielRangel101/mercado-aurora" target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">Código deste projeto</a>
+          </span>
         </footer>
       </div>
 

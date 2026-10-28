@@ -2,7 +2,7 @@
 
 Dashboard de uma **rede fictícia de 4 supermercados**: onde a margem é ganha e perdida, quais produtos faltam na gôndola, quanto se joga fora e o que um alerta automático avisaria ao gerente. Todos os dados são **100% sintéticos** (nenhuma empresa ou cliente real), gerados em Python com seed fixa.
 
-Projeto de portfólio de **Gabriel Rangel**.
+Projeto de portfólio de **Gabriel Rangel** · [LinkedIn](https://www.linkedin.com/in/gabriel-rangel-a954ba26a/) · [GitHub](https://github.com/GabrielRangel101) · [App ao vivo](https://mercado-aurora.lovable.app).
 
 ## Modo IA
 

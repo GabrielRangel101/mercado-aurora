@@ -80,6 +80,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Mercado Aurora · Radar de margem e ruptura" },
+      { name: "author", content: "Gabriel Rangel" },
       { name: "description", content: "Dashboard de varejo alimentar: margem, ruptura e perdas de uma rede fictícia (dados sintéticos)." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
